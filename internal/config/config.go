@@ -14,24 +14,25 @@ import (
 )
 
 type Config struct {
-	Runtime       Runtime       `mapstructure:"-"`
-	App           App           `mapstructure:"app"`
-	HTTP          HTTP          `mapstructure:"http"`
-	GRPC          GRPC          `mapstructure:"grpc"`
-	Log           Log           `mapstructure:"log"`
-	Database      Database      `mapstructure:"database"`
-	Redis         Redis         `mapstructure:"redis"`
-	Health        Health        `mapstructure:"health"`
-	RateLimit     RateLimit     `mapstructure:"rate_limit"`
-	Observability Observability `mapstructure:"observability"`
-	Swagger       Swagger       `mapstructure:"swagger"`
-	JWT           JWT           `mapstructure:"jwt"`
-	Auth          Auth          `mapstructure:"auth"`
-	Cron          Cron          `mapstructure:"cron"`
-	Migration     Migration     `mapstructure:"migration"`
-	Idempotency   Idempotency   `mapstructure:"idempotency"`
-	Outbound      Outbound      `mapstructure:"outbound"`
-	EventBus      EventBus      `mapstructure:"event_bus"`
+	Runtime         Runtime         `mapstructure:"-"`
+	App             App             `mapstructure:"app"`
+	HTTP            HTTP            `mapstructure:"http"`
+	GRPC            GRPC            `mapstructure:"grpc"`
+	Log             Log             `mapstructure:"log"`
+	Database        Database        `mapstructure:"database"`
+	Redis           Redis           `mapstructure:"redis"`
+	Health          Health          `mapstructure:"health"`
+	RateLimit       RateLimit       `mapstructure:"rate_limit"`
+	Observability   Observability   `mapstructure:"observability"`
+	Swagger         Swagger         `mapstructure:"swagger"`
+	JWT             JWT             `mapstructure:"jwt"`
+	Auth            Auth            `mapstructure:"auth"`
+	Cron            Cron            `mapstructure:"cron"`
+	Migration       Migration       `mapstructure:"migration"`
+	Idempotency     Idempotency     `mapstructure:"idempotency"`
+	Outbound        Outbound        `mapstructure:"outbound"`
+	EventBus        EventBus        `mapstructure:"event_bus"`
+	ServiceRegistry ServiceRegistry `mapstructure:"service_registry"`
 }
 
 type Runtime struct {
@@ -195,6 +196,17 @@ type EventBus struct {
 	DispatchBatchSize  int           `mapstructure:"dispatch_batch_size"`
 	DispatchLease      time.Duration `mapstructure:"dispatch_lease"`
 	DispatchRetryDelay time.Duration `mapstructure:"dispatch_retry_delay"`
+}
+type ServiceRegistry struct {
+	Enabled           bool          `mapstructure:"enabled"`
+	Target            string        `mapstructure:"target"`
+	PSK               string        `mapstructure:"psk"`
+	InstanceID        string        `mapstructure:"instance_id"`
+	Endpoint          string        `mapstructure:"endpoint"`
+	Lease             time.Duration `mapstructure:"lease"`
+	HeartbeatInterval time.Duration `mapstructure:"heartbeat_interval"`
+	AllowInsecure     bool          `mapstructure:"allow_insecure"`
+	TLS               ClientTLS     `mapstructure:"tls"`
 }
 type Outbound struct {
 	HTTP map[string]HTTPUpstream `mapstructure:"http"`
@@ -407,6 +419,15 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("event_bus.dispatch_batch_size", 100)
 	v.SetDefault("event_bus.dispatch_lease", "30s")
 	v.SetDefault("event_bus.dispatch_retry_delay", "5s")
+	v.SetDefault("service_registry.enabled", false)
+	v.SetDefault("service_registry.target", "127.0.0.1:9092")
+	v.SetDefault("service_registry.psk", "")
+	v.SetDefault("service_registry.instance_id", "")
+	v.SetDefault("service_registry.endpoint", "grpc://127.0.0.1:9090")
+	v.SetDefault("service_registry.lease", "30s")
+	v.SetDefault("service_registry.heartbeat_interval", "10s")
+	v.SetDefault("service_registry.allow_insecure", false)
+	v.SetDefault("service_registry.tls.enabled", false)
 	v.SetDefault("outbound.http", map[string]any{})
 	v.SetDefault("outbound.grpc", map[string]any{})
 }
@@ -516,6 +537,17 @@ func (c Config) Validate() error {
 	}
 	if c.EventBus.Enabled && (len(c.EventBus.URLs) == 0 || c.EventBus.StreamName != "PLATFORM_EVENTS" || len(c.EventBus.Subjects) != 1 || c.EventBus.Subjects[0] != "platform.>" || (c.EventBus.Storage != "file" && c.EventBus.Storage != "memory") || c.EventBus.MaxAge <= 0 || c.EventBus.DuplicateWindow <= 0 || c.EventBus.ConnectTimeout <= 0 || c.EventBus.ReconnectWait <= 0 || c.EventBus.PublishTimeout <= 0 || c.EventBus.ConsumerAckWait <= 0 || c.EventBus.ConsumerMaxDeliver <= 0 || c.EventBus.DispatchInterval <= 0 || c.EventBus.DispatchBatchSize <= 0 || c.EventBus.DispatchLease <= 0 || c.EventBus.DispatchRetryDelay <= 0) {
 		return errors.New("enabled event_bus requires canonical PLATFORM_EVENTS/platform.> and positive dispatch settings")
+	}
+	if c.ServiceRegistry.Enabled {
+		if c.ServiceRegistry.Target == "" || len(c.ServiceRegistry.PSK) < 32 || c.ServiceRegistry.InstanceID == "" || c.ServiceRegistry.Endpoint == "" || c.ServiceRegistry.Lease <= 0 || c.ServiceRegistry.HeartbeatInterval <= 0 || c.ServiceRegistry.HeartbeatInterval >= c.ServiceRegistry.Lease {
+			return errors.New("enabled service_registry requires target, PSK, instance, endpoint, and a valid lease")
+		}
+		if c.App.Env == "production" && (!c.ServiceRegistry.TLS.Enabled || c.ServiceRegistry.AllowInsecure) {
+			return errors.New("production service_registry requires TLS")
+		}
+		if !c.ServiceRegistry.TLS.Enabled && !c.ServiceRegistry.AllowInsecure {
+			return errors.New("plaintext service_registry credentials require explicit allow_insecure")
+		}
 	}
 	for name, upstream := range c.Outbound.HTTP {
 		if upstream.BaseURL == "" || upstream.Timeout <= 0 {

@@ -35,6 +35,11 @@ idempotency:
 observability:
   metrics_enabled: true
   tracing_enabled: false
+service_registry:
+  enabled: true
+  target: service-registry-service.platform.svc.cluster.local:9090
+  endpoint: grpcs://billing-service.platform.svc.cluster.local:9090
+  tls: {enabled: true, server_name: service-registry-service.platform.svc.cluster.local}
 outbound:
   http:
     payment_gateway:

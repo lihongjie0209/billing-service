@@ -12,3 +12,5 @@ grpc:
   reflection_enabled: true
 cron:
   enabled: true
+service_registry:
+  allow_insecure: true
