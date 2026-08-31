@@ -45,6 +45,22 @@ func TestAuthorizationProtectsPlanMutations(t *testing.T) {
 	}
 }
 
+func TestAuthorizationReportsDecisionOutageAsUnavailable(t *testing.T) {
+	t.Parallel()
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		c.Request = c.Request.WithContext(platformprincipal.WithContext(c.Request.Context(), platformprincipal.Principal{ID: "member-1", Type: platformprincipal.TypeUser, TenantID: "tenant-1"}))
+		c.Next()
+	}, Authorization(&authorizerStub{err: platformauthz.ErrDecisionUnavailable}, slog.New(slog.NewTextHandler(io.Discard, nil))))
+	router.POST("/api/v1/plans/create", func(c *gin.Context) { OK(c, nil) })
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/api/v1/plans/create", nil))
+	if recorder.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusServiceUnavailable)
+	}
+}
+
 func TestRequestID(t *testing.T) {
 	t.Parallel()
 	gin.SetMode(gin.TestMode)

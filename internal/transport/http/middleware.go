@@ -2,6 +2,7 @@ package httptransport
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"mime"
 	"net/http"
@@ -256,6 +257,10 @@ func Authorization(authorizer platformauthz.Authorizer, logger *slog.Logger) gin
 			return
 		}
 		if err := platformauthz.Enforce(c.Request.Context(), authorizer, platformauthz.Requirement{Resource: "billing.plan", Action: action}); err != nil {
+			if errors.Is(err, platformauthz.ErrDecisionUnavailable) {
+				Fail(c, logger, apperror.Unavailable("authorization decision is unavailable", err))
+				return
+			}
 			Fail(c, logger, apperror.Forbidden("permission denied"))
 			return
 		}
