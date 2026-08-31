@@ -1,0 +1,39 @@
+CREATE TABLE plans (
+ id TEXT PRIMARY KEY, code TEXT NOT NULL UNIQUE, name TEXT NOT NULL, description TEXT NOT NULL DEFAULT '', currency TEXT NOT NULL, billing_interval TEXT NOT NULL, base_amount_minor BIGINT NOT NULL, trial_days INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL, entitlements_json JSONB NOT NULL DEFAULT '{}', version BIGINT NOT NULL DEFAULT 1, created_at TIMESTAMPTZ NOT NULL, updated_at TIMESTAMPTZ NOT NULL, created_by TEXT NOT NULL, updated_by TEXT NOT NULL
+);
+CREATE INDEX idx_plans_status_code ON plans(status,code);
+CREATE TABLE usage_prices (
+ id TEXT PRIMARY KEY, plan_id TEXT NOT NULL REFERENCES plans(id), meter_code TEXT NOT NULL, included_quantity BIGINT NOT NULL DEFAULT 0, unit_quantity BIGINT NOT NULL, unit_amount_minor BIGINT NOT NULL, pricing_model TEXT NOT NULL, tiers_json JSONB NOT NULL DEFAULT '[]', version BIGINT NOT NULL DEFAULT 1, created_at TIMESTAMPTZ NOT NULL, updated_at TIMESTAMPTZ NOT NULL, created_by TEXT NOT NULL, updated_by TEXT NOT NULL, UNIQUE(plan_id,meter_code)
+);
+CREATE TABLE subscriptions (
+ id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, plan_id TEXT NOT NULL REFERENCES plans(id), status TEXT NOT NULL, current_period_start TIMESTAMPTZ NOT NULL, current_period_end TIMESTAMPTZ NOT NULL, cancel_at_period_end BOOLEAN NOT NULL DEFAULT FALSE, canceled_at TIMESTAMPTZ NULL, external_reference TEXT NOT NULL DEFAULT '', pending_plan_id TEXT NULL REFERENCES plans(id), pending_change_at TIMESTAMPTZ NULL, version BIGINT NOT NULL DEFAULT 1, created_at TIMESTAMPTZ NOT NULL, updated_at TIMESTAMPTZ NOT NULL, created_by TEXT NOT NULL, updated_by TEXT NOT NULL
+);
+CREATE INDEX idx_subscriptions_tenant_status ON subscriptions(tenant_id,status,updated_at DESC);
+CREATE TABLE subscription_claims (
+ tenant_id TEXT PRIMARY KEY, subscription_id TEXT NOT NULL, version BIGINT NOT NULL DEFAULT 1, created_at TIMESTAMPTZ NOT NULL, updated_at TIMESTAMPTZ NOT NULL, created_by TEXT NOT NULL, updated_by TEXT NOT NULL
+);
+CREATE TABLE invoices (
+ id TEXT PRIMARY KEY, number TEXT NOT NULL UNIQUE, tenant_id TEXT NOT NULL, subscription_id TEXT NOT NULL REFERENCES subscriptions(id), currency TEXT NOT NULL, status TEXT NOT NULL, period_start TIMESTAMPTZ NOT NULL, period_end TIMESTAMPTZ NOT NULL, subtotal_minor BIGINT NOT NULL, discount_minor BIGINT NOT NULL DEFAULT 0, tax_minor BIGINT NOT NULL DEFAULT 0, total_minor BIGINT NOT NULL, paid_minor BIGINT NOT NULL DEFAULT 0, refunded_minor BIGINT NOT NULL DEFAULT 0, due_at TIMESTAMPTZ NULL, finalized_at TIMESTAMPTZ NULL, paid_at TIMESTAMPTZ NULL, version BIGINT NOT NULL DEFAULT 1, created_at TIMESTAMPTZ NOT NULL, updated_at TIMESTAMPTZ NOT NULL, created_by TEXT NOT NULL, updated_by TEXT NOT NULL, CHECK(period_end > period_start)
+);
+CREATE INDEX idx_invoices_tenant_status_created ON invoices(tenant_id,status,created_at DESC);
+CREATE TABLE invoice_lines (
+ id TEXT PRIMARY KEY, invoice_id TEXT NOT NULL REFERENCES invoices(id) ON DELETE CASCADE, type TEXT NOT NULL, description TEXT NOT NULL, meter_code TEXT NOT NULL DEFAULT '', quantity BIGINT NOT NULL, unit_quantity BIGINT NOT NULL, unit_amount_minor BIGINT NOT NULL, amount_minor BIGINT NOT NULL, metadata_json JSONB NOT NULL DEFAULT '{}', version BIGINT NOT NULL DEFAULT 1, created_at TIMESTAMPTZ NOT NULL, updated_at TIMESTAMPTZ NOT NULL, created_by TEXT NOT NULL, updated_by TEXT NOT NULL
+);
+CREATE INDEX idx_invoice_lines_invoice ON invoice_lines(invoice_id,id);
+CREATE TABLE invoice_generation_keys (
+ idempotency_key TEXT PRIMARY KEY, invoice_id TEXT NOT NULL, tenant_id TEXT NOT NULL, request_hash TEXT NOT NULL, version BIGINT NOT NULL DEFAULT 1, created_at TIMESTAMPTZ NOT NULL, updated_at TIMESTAMPTZ NOT NULL, created_by TEXT NOT NULL, updated_by TEXT NOT NULL
+);
+CREATE TABLE payment_attempts (
+ id TEXT PRIMARY KEY, invoice_id TEXT NOT NULL REFERENCES invoices(id), tenant_id TEXT NOT NULL, provider TEXT NOT NULL, provider_payment_id TEXT NOT NULL DEFAULT '', idempotency_key TEXT NOT NULL UNIQUE, request_hash TEXT NOT NULL, currency TEXT NOT NULL, amount_minor BIGINT NOT NULL, status TEXT NOT NULL, failure_code TEXT NOT NULL DEFAULT '', failure_message TEXT NOT NULL DEFAULT '', processed_at TIMESTAMPTZ NULL, version BIGINT NOT NULL DEFAULT 1, created_at TIMESTAMPTZ NOT NULL, updated_at TIMESTAMPTZ NOT NULL, created_by TEXT NOT NULL, updated_by TEXT NOT NULL
+);
+CREATE INDEX idx_payment_attempts_invoice_created ON payment_attempts(invoice_id,created_at DESC);
+CREATE TABLE payment_provider_events (
+ provider TEXT NOT NULL, event_id TEXT NOT NULL, payment_attempt_id TEXT NOT NULL, version BIGINT NOT NULL DEFAULT 1, created_at TIMESTAMPTZ NOT NULL, updated_at TIMESTAMPTZ NOT NULL, created_by TEXT NOT NULL, updated_by TEXT NOT NULL, PRIMARY KEY(provider,event_id)
+);
+CREATE TABLE refunds (
+ id TEXT PRIMARY KEY, payment_attempt_id TEXT NOT NULL REFERENCES payment_attempts(id), invoice_id TEXT NOT NULL REFERENCES invoices(id), provider_refund_id TEXT NOT NULL DEFAULT '', idempotency_key TEXT NOT NULL UNIQUE, request_hash TEXT NOT NULL, amount_minor BIGINT NOT NULL, reason TEXT NOT NULL, status TEXT NOT NULL, version BIGINT NOT NULL DEFAULT 1, created_at TIMESTAMPTZ NOT NULL, updated_at TIMESTAMPTZ NOT NULL, created_by TEXT NOT NULL, updated_by TEXT NOT NULL
+);
+CREATE TABLE billing_outbox_events (
+ id TEXT PRIMARY KEY, subject TEXT NOT NULL, envelope BYTEA NOT NULL, attempts INTEGER NOT NULL DEFAULT 0, available_at TIMESTAMPTZ NOT NULL, published_at TIMESTAMPTZ NULL, last_error TEXT NOT NULL DEFAULT '', version BIGINT NOT NULL DEFAULT 1, created_at TIMESTAMPTZ NOT NULL, updated_at TIMESTAMPTZ NOT NULL, created_by TEXT NOT NULL, updated_by TEXT NOT NULL
+);
+CREATE INDEX idx_billing_outbox_pending ON billing_outbox_events(published_at,available_at);

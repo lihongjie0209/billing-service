@@ -1,0 +1,849 @@
+basePath: /
+definitions:
+  buildinfo.Info:
+    properties:
+      build_time:
+        type: string
+      commit:
+        type: string
+      started_at:
+        type: string
+      uptime:
+        type: string
+      version:
+        type: string
+    type: object
+  health.Dependency:
+    properties:
+      latency:
+        type: string
+      status:
+        type: string
+    type: object
+  health.Status:
+    properties:
+      dependencies:
+        additionalProperties:
+          $ref: '#/definitions/health.Dependency'
+        type: object
+      status:
+        type: string
+    type: object
+  httptransport.MeResponseBody:
+    properties:
+      subject:
+        type: string
+    type: object
+  httptransport.Response:
+    properties:
+      body: {}
+      code:
+        type: integer
+      message:
+        type: string
+      request_id:
+        type: string
+    type: object
+  httptransport.applyPaymentRequest:
+    properties:
+      failure_code:
+        type: string
+      failure_message:
+        type: string
+      payment_attempt_id:
+        type: string
+      processed_at:
+        type: string
+      provider_event_id:
+        type: string
+      provider_payment_id:
+        type: string
+      status:
+        type: string
+    type: object
+  httptransport.cancelSubscriptionRequest:
+    properties:
+      at_period_end:
+        type: boolean
+      id:
+        type: string
+      tenant_id:
+        type: string
+      version:
+        type: integer
+    type: object
+  httptransport.changeSubscriptionRequest:
+    properties:
+      effective_mode:
+        type: string
+      id:
+        type: string
+      plan_id:
+        type: string
+      tenant_id:
+        type: string
+      version:
+        type: integer
+    type: object
+  httptransport.createPaymentRequest:
+    properties:
+      idempotency_key:
+        type: string
+      invoice_id:
+        type: string
+      payment_method_reference:
+        type: string
+      provider:
+        type: string
+      tenant_id:
+        type: string
+    type: object
+  httptransport.createPlanRequest:
+    properties:
+      base_amount_minor:
+        type: integer
+      billing_interval:
+        type: string
+      code:
+        type: string
+      currency:
+        type: string
+      description:
+        type: string
+      entitlements_json:
+        type: string
+      name:
+        type: string
+      trial_days:
+        type: integer
+    type: object
+  httptransport.createSubscriptionRequest:
+    properties:
+      external_reference:
+        type: string
+      plan_id:
+        type: string
+      starts_at:
+        type: string
+      tenant_id:
+        type: string
+    type: object
+  httptransport.finalizeInvoiceRequest:
+    properties:
+      due_at:
+        type: string
+      id:
+        type: string
+      tenant_id:
+        type: string
+      version:
+        type: integer
+    type: object
+  httptransport.getPlanRequest:
+    properties:
+      code:
+        type: string
+      id:
+        type: string
+    type: object
+  httptransport.getSubscriptionRequest:
+    properties:
+      id:
+        type: string
+      tenant_id:
+        type: string
+    type: object
+  httptransport.idVersionRequest:
+    properties:
+      id:
+        type: string
+      tenant_id:
+        type: string
+      version:
+        type: integer
+    type: object
+  httptransport.invoicePeriodRequest:
+    properties:
+      idempotency_key:
+        type: string
+      period_end:
+        type: string
+      period_start:
+        type: string
+      subscription_id:
+        type: string
+      tenant_id:
+        type: string
+    type: object
+  httptransport.listInvoicesRequest:
+    properties:
+      created_from:
+        type: string
+      created_to:
+        type: string
+      page:
+        type: integer
+      page_size:
+        type: integer
+      status:
+        type: string
+      tenant_id:
+        type: string
+    type: object
+  httptransport.listPlansRequest:
+    properties:
+      keyword:
+        type: string
+      page:
+        type: integer
+      page_size:
+        type: integer
+      status:
+        type: string
+    type: object
+  httptransport.listSubscriptionsRequest:
+    properties:
+      page:
+        type: integer
+      page_size:
+        type: integer
+      status:
+        type: string
+      tenant_id:
+        type: string
+    type: object
+  httptransport.recordRefundRequest:
+    properties:
+      amount_minor:
+        type: integer
+      idempotency_key:
+        type: string
+      payment_attempt_id:
+        type: string
+      provider_refund_id:
+        type: string
+      reason:
+        type: string
+      status:
+        type: string
+      tenant_id:
+        type: string
+    type: object
+  httptransport.updatePlanRequest:
+    properties:
+      base_amount_minor:
+        type: integer
+      description:
+        type: string
+      entitlements_json:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+      status:
+        type: string
+      trial_days:
+        type: integer
+      version:
+        type: integer
+    type: object
+  httptransport.upsertUsagePriceRequest:
+    properties:
+      expected_version:
+        type: integer
+      id:
+        type: string
+      included_quantity:
+        type: integer
+      meter_code:
+        type: string
+      plan_id:
+        type: string
+      pricing_model:
+        type: string
+      tiers_json:
+        type: string
+      unit_amount_minor:
+        type: integer
+      unit_quantity:
+        type: integer
+    type: object
+  httptransport.voidInvoiceRequest:
+    properties:
+      id:
+        type: string
+      reason:
+        type: string
+      tenant_id:
+        type: string
+      version:
+        type: integer
+    type: object
+info:
+  contact: {}
+  description: 'Plans, tenant subscriptions, usage-rated invoices, payments, and refunds.
+    All business endpoints use POST+JSON and return code/message/body/request_id.
+    Error ranges: 10000 common/input; 20000 authentication/authorization; 30000 business
+    concurrency/idempotency; 50000 dependency/infrastructure.'
+  title: Platform Billing Service API
+  version: 0.1.0
+paths:
+  /api/v1/invoices/finalize:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Invoice and due date
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/httptransport.finalizeInvoiceRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httptransport.Response'
+      security:
+      - Bearer: []
+      summary: Finalize a draft invoice
+      tags:
+      - invoices
+  /api/v1/invoices/generate:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Invoice period and idempotency key
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/httptransport.invoicePeriodRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httptransport.Response'
+      security:
+      - Bearer: []
+      summary: Generate an idempotent invoice
+      tags:
+      - invoices
+  /api/v1/invoices/get:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Invoice identity
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/httptransport.idVersionRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httptransport.Response'
+      security:
+      - Bearer: []
+      summary: Get an invoice and line items
+      tags:
+      - invoices
+  /api/v1/invoices/list:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Filters and pagination
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/httptransport.listInvoicesRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httptransport.Response'
+      security:
+      - Bearer: []
+      summary: Search tenant invoices
+      tags:
+      - invoices
+  /api/v1/invoices/preview:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Invoice period
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/httptransport.invoicePeriodRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httptransport.Response'
+      security:
+      - Bearer: []
+      summary: Preview an invoice using metering totals
+      tags:
+      - invoices
+  /api/v1/invoices/void:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Invoice and reason
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/httptransport.voidInvoiceRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httptransport.Response'
+      security:
+      - Bearer: []
+      summary: Void an unpaid invoice
+      tags:
+      - invoices
+  /api/v1/me:
+    post:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/httptransport.Response'
+            - properties:
+                body:
+                  $ref: '#/definitions/httptransport.MeResponseBody'
+              type: object
+        "401":
+          description: 'Code 20001: unauthorized'
+          schema:
+            $ref: '#/definitions/httptransport.Response'
+      security:
+      - Bearer: []
+      summary: Return the authenticated subject
+      tags:
+      - authentication
+  /api/v1/payments/apply-result:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Provider result
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/httptransport.applyPaymentRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httptransport.Response'
+      security:
+      - PSK: []
+      summary: Apply an idempotent payment-provider result
+      tags:
+      - payments
+  /api/v1/payments/create-attempt:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Payment
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/httptransport.createPaymentRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httptransport.Response'
+      security:
+      - Bearer: []
+      summary: Create an idempotent payment attempt
+      tags:
+      - payments
+  /api/v1/payments/refunds/record:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Refund
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/httptransport.recordRefundRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httptransport.Response'
+      security:
+      - Bearer: []
+      summary: Record an idempotent refund
+      tags:
+      - payments
+  /api/v1/plans/create:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Plan
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/httptransport.createPlanRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httptransport.Response'
+      security:
+      - Bearer: []
+      summary: Create a billing plan
+      tags:
+      - plans
+  /api/v1/plans/get:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Plan identity
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/httptransport.getPlanRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httptransport.Response'
+      security:
+      - Bearer: []
+      summary: Get a plan and its usage prices
+      tags:
+      - plans
+  /api/v1/plans/list:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Filters and pagination
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/httptransport.listPlansRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httptransport.Response'
+      security:
+      - Bearer: []
+      summary: Search billing plans
+      tags:
+      - plans
+  /api/v1/plans/update:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Plan and current version
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/httptransport.updatePlanRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httptransport.Response'
+      security:
+      - Bearer: []
+      summary: Update a billing plan with optimistic locking
+      tags:
+      - plans
+  /api/v1/plans/usage-prices/delete:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Identity and version
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/httptransport.idVersionRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httptransport.Response'
+      security:
+      - Bearer: []
+      summary: Delete a usage price with optimistic locking
+      tags:
+      - plans
+  /api/v1/plans/usage-prices/upsert:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Usage price
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/httptransport.upsertUsagePriceRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httptransport.Response'
+      security:
+      - Bearer: []
+      summary: Create or update a metered usage price
+      tags:
+      - plans
+  /api/v1/subscriptions/cancel:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Cancellation
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/httptransport.cancelSubscriptionRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httptransport.Response'
+      security:
+      - Bearer: []
+      summary: Cancel a subscription immediately or at period end
+      tags:
+      - subscriptions
+  /api/v1/subscriptions/change:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Plan change
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/httptransport.changeSubscriptionRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httptransport.Response'
+      security:
+      - Bearer: []
+      summary: Change a subscription immediately or next period
+      tags:
+      - subscriptions
+  /api/v1/subscriptions/create:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Subscription
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/httptransport.createSubscriptionRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httptransport.Response'
+      security:
+      - Bearer: []
+      summary: Subscribe a tenant to a plan
+      tags:
+      - subscriptions
+  /api/v1/subscriptions/get:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Subscription identity
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/httptransport.getSubscriptionRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httptransport.Response'
+      security:
+      - Bearer: []
+      summary: Get a tenant subscription and plan
+      tags:
+      - subscriptions
+  /api/v1/subscriptions/list:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Filters and pagination
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/httptransport.listSubscriptionsRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httptransport.Response'
+      security:
+      - Bearer: []
+      summary: List tenant subscriptions
+      tags:
+      - subscriptions
+  /api/v1/version:
+    post:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/httptransport.Response'
+            - properties:
+                body:
+                  $ref: '#/definitions/buildinfo.Info'
+              type: object
+      summary: Return build and runtime version information
+      tags:
+      - operations
+  /live:
+    post:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/httptransport.Response'
+            - properties:
+                body:
+                  $ref: '#/definitions/health.Status'
+              type: object
+      summary: Check process liveness
+      tags:
+      - operations
+  /ready:
+    post:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/httptransport.Response'
+            - properties:
+                body:
+                  $ref: '#/definitions/health.Status'
+              type: object
+        "503":
+          description: 'Code 50003: dependency unavailable'
+          schema:
+            allOf:
+            - $ref: '#/definitions/httptransport.Response'
+            - properties:
+                body:
+                  $ref: '#/definitions/health.Status'
+              type: object
+      summary: Check database and Redis readiness
+      tags:
+      - operations
+schemes:
+- http
+- https
+securityDefinitions:
+  Bearer:
+    description: Enter "Bearer {JWT}".
+    in: header
+    name: Authorization
+    type: apiKey
+  PSK:
+    description: Enter "PSK {shared-key}" for routes configured with PSK authentication.
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"

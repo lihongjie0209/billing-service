@@ -1,0 +1,11 @@
+DROP TABLE IF EXISTS billing_outbox_events;
+DROP TABLE IF EXISTS refunds;
+DROP TABLE IF EXISTS payment_provider_events;
+DROP TABLE IF EXISTS payment_attempts;
+DROP TABLE IF EXISTS invoice_generation_keys;
+DROP TABLE IF EXISTS invoice_lines;
+DROP TABLE IF EXISTS invoices;
+DROP TABLE IF EXISTS subscription_claims;
+DROP TABLE IF EXISTS subscriptions;
+DROP TABLE IF EXISTS usage_prices;
+DROP TABLE IF EXISTS plans;
