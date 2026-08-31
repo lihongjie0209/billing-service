@@ -10,9 +10,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/lihongjie0209/billing-service/internal/billing"
 	"github.com/lihongjie0209/billing-service/internal/config"
 	appdb "github.com/lihongjie0209/billing-service/internal/database"
 	"github.com/lihongjie0209/billing-service/internal/migration"
+	platformprincipal "github.com/lihongjie0209/microservice-platform-go/principal"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/modules/mysql"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
@@ -70,6 +72,30 @@ func TestRepositoryAndMigrations(t *testing.T) {
 			if billingTables != 6 {
 				t.Fatalf("billing table count = %d, want 6", billingTables)
 			}
+			repository := billing.NewRepository(db)
+			service := billing.NewService(repository, appdb.NewTransactor(db), zeroUsage{})
+			actorCtx := platformprincipal.WithContext(ctx, platformprincipal.Principal{ID: "integration-service", Type: platformprincipal.TypeServiceAccount})
+			plan, err := service.CreatePlan(actorCtx, billing.Plan{Code: "integration." + databaseType, Name: "Integration", Currency: "CNY", BillingInterval: "month", BaseAmountMinor: 100})
+			if err != nil {
+				t.Fatalf("create plan: %v", err)
+			}
+			plan.Name, plan.Status = "Integration Active", "active"
+			plan, err = service.UpdatePlan(actorCtx, plan, plan.Version)
+			if err != nil {
+				t.Fatalf("activate plan: %v", err)
+			}
+			subscription, err := service.CreateSubscription(actorCtx, "tenant-integration", plan.ID, time.Now(), "")
+			if err != nil {
+				t.Fatalf("create subscription: %v", err)
+			}
+			invoice, duplicate, err := service.GenerateInvoice(actorCtx, "tenant-integration", subscription.ID, time.Time{}, time.Time{}, "invoice-integration-key")
+			if err != nil || duplicate {
+				t.Fatalf("generate invoice duplicate=%v err=%v", duplicate, err)
+			}
+			replayed, replayedDuplicate, err := service.GenerateInvoice(actorCtx, "tenant-integration", subscription.ID, time.Time{}, time.Time{}, "invoice-integration-key")
+			if err != nil || !replayedDuplicate || replayed.Invoice.ID != invoice.Invoice.ID {
+				t.Fatalf("replay invoice=%s duplicate=%v err=%v", replayed.Invoice.ID, replayedDuplicate, err)
+			}
 			if err := db.Close(); err != nil {
 				t.Fatal(err)
 			}
@@ -78,6 +104,12 @@ func TestRepositoryAndMigrations(t *testing.T) {
 			}
 		})
 	}
+}
+
+type zeroUsage struct{}
+
+func (zeroUsage) Total(context.Context, string, string, time.Time, time.Time) (int64, error) {
+	return 0, nil
 }
 
 func startDatabase(t *testing.T, ctx context.Context, databaseType string) (string, string) {
