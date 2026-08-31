@@ -118,7 +118,7 @@ func (s *Service) ImportPlan(ctx context.Context, value Plan) (Plan, bool, error
 }
 
 func sameImportedPlan(current, candidate Plan) bool {
-	return current.Code == candidate.Code && current.Name == candidate.Name && current.Description == candidate.Description && current.Currency == candidate.Currency && current.BillingInterval == candidate.BillingInterval && current.BaseAmountMinor == candidate.BaseAmountMinor && current.TrialDays == candidate.TrialDays && current.EntitlementsJSON == candidate.EntitlementsJSON
+	return current.Code == candidate.Code && current.Name == candidate.Name && current.Description == candidate.Description && current.Currency == candidate.Currency && current.BillingInterval == candidate.BillingInterval && current.BaseAmountMinor == candidate.BaseAmountMinor && current.TrialDays == candidate.TrialDays && compactJSON(current.EntitlementsJSON) == compactJSON(candidate.EntitlementsJSON)
 }
 func (s *Service) UpdatePlan(ctx context.Context, value Plan, expected int64) (Plan, error) {
 	actorID, err := actor(ctx)

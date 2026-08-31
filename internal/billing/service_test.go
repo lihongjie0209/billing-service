@@ -124,6 +124,8 @@ func TestImportPlanUsesCodeAsReplayBoundary(t *testing.T) {
 	if err != nil || duplicate || created.Code != "pro-monthly" || created.EntitlementsJSON != `{"seats":10}` {
 		t.Fatalf("created=%+v duplicate=%v err=%v", created, duplicate, err)
 	}
+	// PostgreSQL JSONB does not preserve the input whitespace representation.
+	repository.plan.EntitlementsJSON = `{"seats": 10}`
 	replayed, duplicate, err := service.ImportPlan(ctx, input)
 	if err != nil || !duplicate || replayed.ID != created.ID || repository.creates != 1 {
 		t.Fatalf("replayed=%+v duplicate=%v creates=%d err=%v", replayed, duplicate, repository.creates, err)
