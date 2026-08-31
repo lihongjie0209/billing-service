@@ -119,13 +119,14 @@ func TestImportPlanUsesCodeAsReplayBoundary(t *testing.T) {
 	service := NewService(repository, nil, nil)
 	service.transactor = transactionStub{}
 	ctx := platformprincipal.WithContext(t.Context(), platformprincipal.Principal{ID: "import-service", Type: platformprincipal.TypeServiceAccount})
-	input := Plan{Code: " pro-monthly ", Name: " Pro ", Currency: "cny", BillingInterval: "MONTH", BaseAmountMinor: 9900, EntitlementsJSON: `{ "seats": 10 }`}
+	input := Plan{Code: " pro-monthly ", Name: " Pro ", Currency: "cny", BillingInterval: "MONTH", BaseAmountMinor: 9900, EntitlementsJSON: `{ "seats": 10, "features": ["reports"] }`}
 	created, duplicate, err := service.ImportPlan(ctx, input)
-	if err != nil || duplicate || created.Code != "pro-monthly" || created.EntitlementsJSON != `{"seats":10}` {
+	if err != nil || duplicate || created.Code != "pro-monthly" || created.EntitlementsJSON != `{"features":["reports"],"seats":10}` {
 		t.Fatalf("created=%+v duplicate=%v err=%v", created, duplicate, err)
 	}
 	// PostgreSQL JSONB does not preserve the input whitespace representation.
-	repository.plan.EntitlementsJSON = `{"seats": 10}`
+	repository.plan.EntitlementsJSON = `{"features":["reports"],"seats": 10}`
+	input.EntitlementsJSON = `{"seats":10,"features":["reports"]}`
 	replayed, duplicate, err := service.ImportPlan(ctx, input)
 	if err != nil || !duplicate || replayed.ID != created.ID || repository.creates != 1 {
 		t.Fatalf("replayed=%+v duplicate=%v creates=%d err=%v", replayed, duplicate, repository.creates, err)

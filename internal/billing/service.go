@@ -1,7 +1,6 @@
 package billing
 
 import (
-	"bytes"
 	"context"
 	"crypto/sha256"
 	"database/sql"
@@ -870,11 +869,15 @@ func defaultJSON(v, fallback string) string {
 }
 func validJSON(v, fallback string) bool { return json.Valid([]byte(defaultJSON(v, fallback))) }
 func compactJSON(value string) string {
-	var result bytes.Buffer
-	if err := json.Compact(&result, []byte(value)); err != nil {
+	var decoded any
+	if err := json.Unmarshal([]byte(value), &decoded); err != nil {
 		return value
 	}
-	return result.String()
+	canonical, err := json.Marshal(decoded)
+	if err != nil {
+		return value
+	}
+	return string(canonical)
 }
 func usageAmount(quantity, unit, amount int64) (int64, error) {
 	if quantity <= 0 {
