@@ -1,6 +1,7 @@
 package httptransport
 
 import (
+	"encoding/json"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -18,24 +19,24 @@ type idVersionRequest struct {
 	Version  int64  `json:"version"`
 }
 type createPlanRequest struct {
-	Code             string `json:"code"`
-	Name             string `json:"name"`
-	Description      string `json:"description"`
-	Currency         string `json:"currency"`
-	BillingInterval  string `json:"billing_interval"`
-	BaseAmountMinor  int64  `json:"base_amount_minor"`
-	TrialDays        int32  `json:"trial_days"`
-	EntitlementsJSON string `json:"entitlements_json"`
+	Code             string          `json:"code"`
+	Name             string          `json:"name"`
+	Description      string          `json:"description"`
+	Currency         string          `json:"currency"`
+	BillingInterval  string          `json:"billing_interval"`
+	BaseAmountMinor  int64           `json:"base_amount_minor"`
+	TrialDays        int32           `json:"trial_days"`
+	EntitlementsJSON json.RawMessage `json:"entitlements_json" swaggertype:"object"`
 }
 type updatePlanRequest struct {
-	ID               string `json:"id"`
-	Name             string `json:"name"`
-	Description      string `json:"description"`
-	BaseAmountMinor  int64  `json:"base_amount_minor"`
-	TrialDays        int32  `json:"trial_days"`
-	Status           string `json:"status"`
-	EntitlementsJSON string `json:"entitlements_json"`
-	Version          int64  `json:"version"`
+	ID               string          `json:"id"`
+	Name             string          `json:"name"`
+	Description      string          `json:"description"`
+	BaseAmountMinor  int64           `json:"base_amount_minor"`
+	TrialDays        int32           `json:"trial_days"`
+	Status           string          `json:"status"`
+	EntitlementsJSON json.RawMessage `json:"entitlements_json" swaggertype:"object"`
+	Version          int64           `json:"version"`
 }
 type getPlanRequest struct {
 	ID   string `json:"id"`
@@ -47,15 +48,15 @@ type listPlansRequest struct {
 	pageRequest
 }
 type upsertUsagePriceRequest struct {
-	ID               string `json:"id"`
-	PlanID           string `json:"plan_id"`
-	MeterCode        string `json:"meter_code"`
-	IncludedQuantity int64  `json:"included_quantity"`
-	UnitQuantity     int64  `json:"unit_quantity"`
-	UnitAmountMinor  int64  `json:"unit_amount_minor"`
-	PricingModel     string `json:"pricing_model"`
-	TiersJSON        string `json:"tiers_json"`
-	ExpectedVersion  int64  `json:"expected_version"`
+	ID               string          `json:"id"`
+	PlanID           string          `json:"plan_id"`
+	MeterCode        string          `json:"meter_code"`
+	IncludedQuantity int64           `json:"included_quantity"`
+	UnitQuantity     int64           `json:"unit_quantity"`
+	UnitAmountMinor  int64           `json:"unit_amount_minor"`
+	PricingModel     string          `json:"pricing_model"`
+	TiersJSON        json.RawMessage `json:"tiers_json" swaggertype:"array,object"`
+	ExpectedVersion  int64           `json:"expected_version"`
 }
 type createSubscriptionRequest struct {
 	TenantID          string    `json:"tenant_id"`
@@ -137,6 +138,21 @@ type recordRefundRequest struct {
 	Status           string `json:"status"`
 }
 
+type planView struct {
+	billing.Plan
+	EntitlementsJSON json.RawMessage `json:"entitlements_json" swaggertype:"object"`
+}
+
+type usagePriceView struct {
+	billing.UsagePrice
+	TiersJSON json.RawMessage `json:"tiers_json" swaggertype:"array,object"`
+}
+
+type invoiceLineView struct {
+	billing.InvoiceLine
+	MetadataJSON json.RawMessage `json:"metadata_json" swaggertype:"object"`
+}
+
 func registerBillingRoutes(api *gin.RouterGroup, h *Handler) {
 	for path, handler := range map[string]gin.HandlerFunc{
 		"/plans/create": h.CreatePlan, "/plans/update": h.UpdatePlan, "/plans/get": h.GetPlan, "/plans/list": h.ListPlans,
@@ -170,16 +186,16 @@ func (h *Handler) CreatePlan(c *gin.Context) {
 	if !ok {
 		return
 	}
-	v, e := h.billing.CreatePlan(c.Request.Context(), billing.Plan{Code: r.Code, Name: r.Name, Description: r.Description, Currency: r.Currency, BillingInterval: r.BillingInterval, BaseAmountMinor: r.BaseAmountMinor, TrialDays: r.TrialDays, EntitlementsJSON: r.EntitlementsJSON})
-	result(h, c, v, e)
+	v, e := h.billing.CreatePlan(c.Request.Context(), billing.Plan{Code: r.Code, Name: r.Name, Description: r.Description, Currency: r.Currency, BillingInterval: r.BillingInterval, BaseAmountMinor: r.BaseAmountMinor, TrialDays: r.TrialDays, EntitlementsJSON: string(rawObject(r.EntitlementsJSON))})
+	result(h, c, toPlanView(v), e)
 }
 func (h *Handler) UpdatePlan(c *gin.Context) {
 	r, ok := decode[updatePlanRequest](h, c)
 	if !ok {
 		return
 	}
-	v, e := h.billing.UpdatePlan(c.Request.Context(), billing.Plan{ID: r.ID, Name: r.Name, Description: r.Description, BaseAmountMinor: r.BaseAmountMinor, TrialDays: r.TrialDays, Status: r.Status, EntitlementsJSON: r.EntitlementsJSON}, r.Version)
-	result(h, c, v, e)
+	v, e := h.billing.UpdatePlan(c.Request.Context(), billing.Plan{ID: r.ID, Name: r.Name, Description: r.Description, BaseAmountMinor: r.BaseAmountMinor, TrialDays: r.TrialDays, Status: r.Status, EntitlementsJSON: string(rawObject(r.EntitlementsJSON))}, r.Version)
+	result(h, c, toPlanView(v), e)
 }
 func (h *Handler) GetPlan(c *gin.Context) {
 	r, ok := decode[getPlanRequest](h, c)
@@ -187,7 +203,7 @@ func (h *Handler) GetPlan(c *gin.Context) {
 		return
 	}
 	v, p, e := h.billing.GetPlan(c.Request.Context(), r.ID, r.Code)
-	result(h, c, gin.H{"plan": v, "usage_prices": p}, e)
+	result(h, c, gin.H{"plan": toPlanView(v), "usage_prices": toUsagePriceViews(p)}, e)
 }
 func (h *Handler) ListPlans(c *gin.Context) {
 	r, ok := decode[listPlansRequest](h, c)
@@ -195,15 +211,15 @@ func (h *Handler) ListPlans(c *gin.Context) {
 		return
 	}
 	v, e := h.billing.ListPlans(c.Request.Context(), r.Status, r.Keyword, r.Page, r.PageSize)
-	result(h, c, v, e)
+	result(h, c, billing.Page[planView]{Items: toPlanViews(v.Items), Total: v.Total, Page: v.Page, PageSize: v.PageSize}, e)
 }
 func (h *Handler) UpsertUsagePrice(c *gin.Context) {
 	r, ok := decode[upsertUsagePriceRequest](h, c)
 	if !ok {
 		return
 	}
-	v, e := h.billing.UpsertUsagePrice(c.Request.Context(), billing.UsagePrice{ID: r.ID, PlanID: r.PlanID, MeterCode: r.MeterCode, IncludedQuantity: r.IncludedQuantity, UnitQuantity: r.UnitQuantity, UnitAmountMinor: r.UnitAmountMinor, PricingModel: r.PricingModel, TiersJSON: r.TiersJSON}, r.ExpectedVersion)
-	result(h, c, v, e)
+	v, e := h.billing.UpsertUsagePrice(c.Request.Context(), billing.UsagePrice{ID: r.ID, PlanID: r.PlanID, MeterCode: r.MeterCode, IncludedQuantity: r.IncludedQuantity, UnitQuantity: r.UnitQuantity, UnitAmountMinor: r.UnitAmountMinor, PricingModel: r.PricingModel, TiersJSON: string(rawArray(r.TiersJSON))}, r.ExpectedVersion)
+	result(h, c, toUsagePriceView(v), e)
 }
 func (h *Handler) DeleteUsagePrice(c *gin.Context) {
 	r, ok := decode[idVersionRequest](h, c)
@@ -243,7 +259,7 @@ func (h *Handler) GetSubscription(c *gin.Context) {
 		return
 	}
 	v, p, e := h.billing.GetSubscription(c.Request.Context(), r.TenantID, r.ID)
-	result(h, c, gin.H{"subscription": v, "plan": p}, e)
+	result(h, c, gin.H{"subscription": v, "plan": toPlanView(p)}, e)
 }
 func (h *Handler) ListSubscriptions(c *gin.Context) {
 	r, ok := decode[listSubscriptionsRequest](h, c)
@@ -259,7 +275,7 @@ func (h *Handler) PreviewInvoice(c *gin.Context) {
 		return
 	}
 	v, e := h.billing.PreviewInvoice(c.Request.Context(), r.TenantID, r.SubscriptionID, r.PeriodStart, r.PeriodEnd)
-	result(h, c, v, e)
+	result(h, c, invoicePreviewView(v), e)
 }
 func (h *Handler) GenerateInvoice(c *gin.Context) {
 	r, ok := decode[invoicePeriodRequest](h, c)
@@ -267,7 +283,7 @@ func (h *Handler) GenerateInvoice(c *gin.Context) {
 		return
 	}
 	v, d, e := h.billing.GenerateInvoice(c.Request.Context(), r.TenantID, r.SubscriptionID, r.PeriodStart, r.PeriodEnd, r.IdempotencyKey)
-	result(h, c, gin.H{"invoice": v.Invoice, "lines": v.Lines, "duplicate": d}, e)
+	result(h, c, gin.H{"invoice": v.Invoice, "lines": toInvoiceLineViews(v.Lines), "duplicate": d}, e)
 }
 func (h *Handler) FinalizeInvoice(c *gin.Context) {
 	r, ok := decode[finalizeInvoiceRequest](h, c)
@@ -291,7 +307,59 @@ func (h *Handler) GetInvoice(c *gin.Context) {
 		return
 	}
 	v, l, e := h.billing.GetInvoice(c.Request.Context(), r.TenantID, r.ID)
-	result(h, c, gin.H{"invoice": v, "lines": l}, e)
+	result(h, c, gin.H{"invoice": v, "lines": toInvoiceLineViews(l)}, e)
+}
+
+func rawObject(value json.RawMessage) json.RawMessage { return rawJSON(value, `{}`) }
+func rawArray(value json.RawMessage) json.RawMessage  { return rawJSON(value, `[]`) }
+
+func rawJSON(value json.RawMessage, fallback string) json.RawMessage {
+	if len(value) > 0 && json.Valid(value) {
+		if value[0] == '"' {
+			var legacy string
+			if json.Unmarshal(value, &legacy) == nil && json.Valid([]byte(legacy)) {
+				return json.RawMessage(legacy)
+			}
+		}
+		return value
+	}
+	return json.RawMessage(fallback)
+}
+
+func toPlanView(value billing.Plan) planView {
+	return planView{Plan: value, EntitlementsJSON: rawObject(json.RawMessage(value.EntitlementsJSON))}
+}
+
+func toPlanViews(values []billing.Plan) []planView {
+	result := make([]planView, 0, len(values))
+	for _, value := range values {
+		result = append(result, toPlanView(value))
+	}
+	return result
+}
+
+func toUsagePriceView(value billing.UsagePrice) usagePriceView {
+	return usagePriceView{UsagePrice: value, TiersJSON: rawArray(json.RawMessage(value.TiersJSON))}
+}
+
+func toUsagePriceViews(values []billing.UsagePrice) []usagePriceView {
+	result := make([]usagePriceView, 0, len(values))
+	for _, value := range values {
+		result = append(result, toUsagePriceView(value))
+	}
+	return result
+}
+
+func toInvoiceLineViews(values []billing.InvoiceLine) []invoiceLineView {
+	result := make([]invoiceLineView, 0, len(values))
+	for _, value := range values {
+		result = append(result, invoiceLineView{InvoiceLine: value, MetadataJSON: rawObject(json.RawMessage(value.MetadataJSON))})
+	}
+	return result
+}
+
+func invoicePreviewView(value billing.InvoicePreview) gin.H {
+	return gin.H{"invoice": value.Invoice, "lines": toInvoiceLineViews(value.Lines)}
 }
 func (h *Handler) ListInvoices(c *gin.Context) {
 	r, ok := decode[listInvoicesRequest](h, c)

@@ -1100,7 +1100,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "entitlements_json": {
-                    "type": "string"
+                    "type": "object"
                 },
                 "name": {
                     "type": "string"
@@ -1293,7 +1293,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "entitlements_json": {
-                    "type": "string"
+                    "type": "object"
                 },
                 "id": {
                     "type": "string"
@@ -1334,7 +1334,10 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "tiers_json": {
-                    "type": "string"
+                    "type": "array",
+                    "items": {
+                        "type": "object"
+                    }
                 },
                 "unit_amount_minor": {
                     "type": "integer"

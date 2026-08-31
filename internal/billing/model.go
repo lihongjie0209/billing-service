@@ -20,7 +20,7 @@ type Plan struct {
 	BaseAmountMinor  int64  `db:"base_amount_minor" json:"base_amount_minor"`
 	TrialDays        int32  `db:"trial_days" json:"trial_days"`
 	Status           string `db:"status" json:"status"`
-	EntitlementsJSON string `db:"entitlements_json" json:"entitlements_json"`
+	EntitlementsJSON string `db:"entitlements_json" json:"-"`
 	Audit
 }
 
@@ -32,7 +32,7 @@ type UsagePrice struct {
 	UnitQuantity     int64  `db:"unit_quantity" json:"unit_quantity"`
 	UnitAmountMinor  int64  `db:"unit_amount_minor" json:"unit_amount_minor"`
 	PricingModel     string `db:"pricing_model" json:"pricing_model"`
-	TiersJSON        string `db:"tiers_json" json:"tiers_json"`
+	TiersJSON        string `db:"tiers_json" json:"-"`
 	Audit
 }
 
@@ -82,7 +82,7 @@ type InvoiceLine struct {
 	UnitQuantity    int64  `db:"unit_quantity" json:"unit_quantity"`
 	UnitAmountMinor int64  `db:"unit_amount_minor" json:"unit_amount_minor"`
 	AmountMinor     int64  `db:"amount_minor" json:"amount_minor"`
-	MetadataJSON    string `db:"metadata_json" json:"metadata_json"`
+	MetadataJSON    string `db:"metadata_json" json:"-"`
 	Audit
 }
 
