@@ -24,6 +24,7 @@ import (
 
 	billingv1 "github.com/lihongjie0209/platform-protos/gen/go/platform/billing/v1"
 	exportv1 "github.com/lihongjie0209/platform-protos/gen/go/platform/export/v1"
+	importv1 "github.com/lihongjie0209/platform-protos/gen/go/platform/import/v1"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/fx"
@@ -59,6 +60,7 @@ func NewServer(lc fx.Lifecycle, cfg config.Config, authService *auth.Service, au
 	grpcServer := grpc.NewServer(options...)
 	billingv1.RegisterBillingServiceServer(grpcServer, &billingServer{service: billingService})
 	exportv1.RegisterExportProviderServiceServer(grpcServer, &exportProviderServer{service: billingService})
+	importv1.RegisterImportProviderServiceServer(grpcServer, &importProviderServer{service: billingService})
 	grpc_health_v1.RegisterHealthServer(grpcServer, &healthServer{health: healthService})
 	if cfg.GRPC.ReflectionEnabled {
 		reflection.Register(grpcServer)

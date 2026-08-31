@@ -10,6 +10,7 @@ import (
 	"github.com/lihongjie0209/billing-service/internal/config"
 	"github.com/lihongjie0209/billing-service/internal/grpcclient"
 	"github.com/lihongjie0209/microservice-platform-go/exportprovider"
+	"github.com/lihongjie0209/microservice-platform-go/importprovider"
 	"github.com/lihongjie0209/microservice-platform-go/serviceregistry"
 	registryv1 "github.com/lihongjie0209/platform-protos/gen/go/platform/registry/v1"
 	"go.uber.org/fx"
@@ -34,6 +35,13 @@ func newRegistryRuntime(lifecycle fx.Lifecycle, cfg config.Config, logger *slog.
 	metadata, err := exportprovider.Metadata([]exportprovider.Dataset{{Code: "billing.invoices", Title: "Billing invoices", Formats: []string{"csv", "jsonl", "xlsx"}, SupportsSnapshot: false}})
 	if err != nil {
 		return nil, err
+	}
+	importMetadata, err := importprovider.Metadata([]importprovider.Dataset{{Code: "billing.plans", Title: "Billing plan drafts", Formats: []string{"csv", "jsonl", "xlsx"}, MaxBatchSize: 100, SupportsDryRun: true}})
+	if err != nil {
+		return nil, err
+	}
+	for key, value := range importMetadata {
+		metadata[key] = value
 	}
 	connection, err := grpcclient.Dial(grpcclient.Config{Name: "service-registry-service", Target: cfg.ServiceRegistry.Target, Timeout: 3 * time.Second, PSK: cfg.ServiceRegistry.PSK, TLS: grpcclient.TLSConfig{Enabled: cfg.ServiceRegistry.TLS.Enabled, ServerName: cfg.ServiceRegistry.TLS.ServerName, CAFile: cfg.ServiceRegistry.TLS.CAFile, CertFile: cfg.ServiceRegistry.TLS.CertFile, KeyFile: cfg.ServiceRegistry.TLS.KeyFile, AllowInsecureToken: cfg.ServiceRegistry.AllowInsecure}})
 	if err != nil {

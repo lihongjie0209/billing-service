@@ -6,6 +6,7 @@
 
 - 浏览器和管理端使用 `/api/v1/**` 的 POST+JSON API，响应统一为 `{code,message,body,request_id}`。
 - 服务间使用中央仓库 `platform-protos` 的 `platform.billing.v1.BillingService`，独立 gRPC 端口默认为 `9090`。
+- 实现通用 Export Provider 的 `billing.invoices` 和 Import Provider 的 `billing.plans`；导入套餐先逐行规范化与校验，应用时以套餐 code 作为持久幂等边界。
 - `/live`、`/ready`、`/metrics`、受保护 Swagger/pprof 由公共脚手架能力提供。
 - JWT 由 identity-service 签发并通过 JWKS 校验；免认证与 PSK 路由均支持配置通配符。
 - 套餐和价格写操作通过 `platform-go/authz` 调用 authorization-service；租户资源在领域层再次校验 tenant scope。

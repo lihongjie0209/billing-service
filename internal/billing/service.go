@@ -1,6 +1,7 @@
 package billing
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"database/sql"
@@ -57,17 +58,13 @@ func (s *Service) CreatePlan(ctx context.Context, value Plan) (Plan, error) {
 	if err != nil {
 		return Plan{}, err
 	}
-	value.Code = strings.ToLower(strings.TrimSpace(value.Code))
-	value.Name = strings.TrimSpace(value.Name)
-	value.Currency = strings.ToUpper(strings.TrimSpace(value.Currency))
-	value.BillingInterval = strings.ToLower(strings.TrimSpace(value.BillingInterval))
-	if !planCodePattern.MatchString(value.Code) || value.Name == "" || !currencyPattern.MatchString(value.Currency) || !validInterval(value.BillingInterval) || value.BaseAmountMinor < 0 || value.TrialDays < 0 || !validJSON(value.EntitlementsJSON, "{}") {
-		return Plan{}, apperror.Invalid("invalid plan definition", nil)
+	value, err = normalizeNewPlan(value)
+	if err != nil {
+		return Plan{}, err
 	}
 	now := s.now()
 	value.ID = uuid.NewString()
 	value.Status = "draft"
-	value.EntitlementsJSON = defaultJSON(value.EntitlementsJSON, "{}")
 	value.Audit = newAudit(actorID, now)
 	err = s.transactor.Within(ctx, nil, func(tx *sqlx.Tx) error {
 		if err := s.repository.CreatePlan(ctx, tx, value); err != nil {
@@ -76,6 +73,52 @@ func (s *Service) CreatePlan(ctx context.Context, value Plan) (Plan, error) {
 		return s.addEvent(ctx, tx, "platform.billing.plan.changed.v1", "platform.billing.v1.PlanChanged", value.ID, "plan", "", actorID, now, &billingv1.PlanChangedEvent{Plan: ToProtoPlan(value), ChangeType: "created"})
 	})
 	return value, translate(err)
+}
+
+func normalizeNewPlan(value Plan) (Plan, error) {
+	value.Code = strings.ToLower(strings.TrimSpace(value.Code))
+	value.Name = strings.TrimSpace(value.Name)
+	value.Currency = strings.ToUpper(strings.TrimSpace(value.Currency))
+	value.BillingInterval = strings.ToLower(strings.TrimSpace(value.BillingInterval))
+	if !planCodePattern.MatchString(value.Code) || value.Name == "" || !currencyPattern.MatchString(value.Currency) || !validInterval(value.BillingInterval) || value.BaseAmountMinor < 0 || value.TrialDays < 0 || !validJSON(value.EntitlementsJSON, "{}") {
+		return Plan{}, apperror.Invalid("invalid plan definition", nil)
+	}
+	value.EntitlementsJSON = compactJSON(defaultJSON(value.EntitlementsJSON, "{}"))
+	return value, nil
+}
+
+// NormalizeImportedPlan applies the same validation and canonicalization as
+// CreatePlan without performing a write.
+func NormalizeImportedPlan(value Plan) (Plan, error) { return normalizeNewPlan(value) }
+
+// ImportPlan creates a draft plan and treats a replay of identical plan data
+// as success. The unique plan code is the durable idempotency boundary.
+func (s *Service) ImportPlan(ctx context.Context, value Plan) (Plan, bool, error) {
+	normalized, err := normalizeNewPlan(value)
+	if err != nil {
+		return Plan{}, false, err
+	}
+	if current, getErr := s.repository.GetPlan(ctx, "", normalized.Code); getErr == nil {
+		if sameImportedPlan(current, normalized) {
+			return current, true, nil
+		}
+		return Plan{}, false, apperror.Conflict("plan code already exists with different data", nil)
+	} else if !errors.Is(getErr, ErrNotFound) {
+		return Plan{}, false, translate(getErr)
+	}
+	created, err := s.CreatePlan(ctx, normalized)
+	if err == nil {
+		return created, false, nil
+	}
+	current, getErr := s.repository.GetPlan(ctx, "", normalized.Code)
+	if getErr == nil && sameImportedPlan(current, normalized) {
+		return current, true, nil
+	}
+	return Plan{}, false, err
+}
+
+func sameImportedPlan(current, candidate Plan) bool {
+	return current.Code == candidate.Code && current.Name == candidate.Name && current.Description == candidate.Description && current.Currency == candidate.Currency && current.BillingInterval == candidate.BillingInterval && current.BaseAmountMinor == candidate.BaseAmountMinor && current.TrialDays == candidate.TrialDays && current.EntitlementsJSON == candidate.EntitlementsJSON
 }
 func (s *Service) UpdatePlan(ctx context.Context, value Plan, expected int64) (Plan, error) {
 	actorID, err := actor(ctx)
@@ -826,6 +869,13 @@ func defaultJSON(v, fallback string) string {
 	return v
 }
 func validJSON(v, fallback string) bool { return json.Valid([]byte(defaultJSON(v, fallback))) }
+func compactJSON(value string) string {
+	var result bytes.Buffer
+	if err := json.Compact(&result, []byte(value)); err != nil {
+		return value
+	}
+	return result.String()
+}
 func usageAmount(quantity, unit, amount int64) (int64, error) {
 	if quantity <= 0 {
 		return 0, nil

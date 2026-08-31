@@ -33,6 +33,27 @@ type paymentRepository struct {
 	updatedInvoice Invoice
 }
 
+type planImportRepository struct {
+	Repository
+	plan    *Plan
+	creates int
+}
+
+func (r *planImportRepository) GetPlan(_ context.Context, _, code string) (Plan, error) {
+	if r.plan != nil && r.plan.Code == code {
+		return *r.plan, nil
+	}
+	return Plan{}, ErrNotFound
+}
+func (r *planImportRepository) CreatePlan(_ context.Context, _ sqlx.ExtContext, value Plan) error {
+	r.creates++
+	r.plan = &value
+	return nil
+}
+func (*planImportRepository) AddOutbox(context.Context, sqlx.ExtContext, OutboxEvent) error {
+	return nil
+}
+
 func (r *paymentRepository) GetPayment(context.Context, string, string) (PaymentAttempt, error) {
 	return r.payment, nil
 }
@@ -89,6 +110,23 @@ func TestCreatePaymentAttemptCallsGatewayAfterClaim(t *testing.T) {
 	}
 	if duplicate || payment.Status != "succeeded" || gateway.command.PaymentMethodReference != "payment-method-secret" || gateway.command.AmountMinor != 900 {
 		t.Fatalf("payment=%+v duplicate=%v command=%+v", payment, duplicate, gateway.command)
+	}
+}
+
+func TestImportPlanUsesCodeAsReplayBoundary(t *testing.T) {
+	t.Parallel()
+	repository := &planImportRepository{}
+	service := NewService(repository, nil, nil)
+	service.transactor = transactionStub{}
+	ctx := platformprincipal.WithContext(t.Context(), platformprincipal.Principal{ID: "import-service", Type: platformprincipal.TypeServiceAccount})
+	input := Plan{Code: " pro-monthly ", Name: " Pro ", Currency: "cny", BillingInterval: "MONTH", BaseAmountMinor: 9900, EntitlementsJSON: `{ "seats": 10 }`}
+	created, duplicate, err := service.ImportPlan(ctx, input)
+	if err != nil || duplicate || created.Code != "pro-monthly" || created.EntitlementsJSON != `{"seats":10}` {
+		t.Fatalf("created=%+v duplicate=%v err=%v", created, duplicate, err)
+	}
+	replayed, duplicate, err := service.ImportPlan(ctx, input)
+	if err != nil || !duplicate || replayed.ID != created.ID || repository.creates != 1 {
+		t.Fatalf("replayed=%+v duplicate=%v creates=%d err=%v", replayed, duplicate, repository.creates, err)
 	}
 }
 

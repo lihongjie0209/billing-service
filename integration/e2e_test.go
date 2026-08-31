@@ -18,6 +18,7 @@ import (
 	"github.com/lihongjie0209/billing-service/internal/auth"
 	"github.com/lihongjie0209/billing-service/internal/config"
 	billingv1 "github.com/lihongjie0209/platform-protos/gen/go/platform/billing/v1"
+	importv1 "github.com/lihongjie0209/platform-protos/gen/go/platform/import/v1"
 	goredis "github.com/redis/go-redis/v9"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
@@ -28,6 +29,7 @@ import (
 	grpc_health_v1 "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/structpb"
 )
 
 func TestHTTPAndGRPCEndToEnd(t *testing.T) {
@@ -73,7 +75,7 @@ func TestHTTPAndGRPCEndToEnd(t *testing.T) {
 		Health:        config.Health{DatabaseTimeout: 2 * time.Second, RedisTimeout: 2 * time.Second},
 		Observability: config.Observability{MetricsEnabled: true},
 		JWT:           config.JWT{Issuer: "integration", Secret: secret, TTL: time.Hour},
-		Auth:          config.Auth{ClientID: "client", ClientSecret: "secret", SkipHTTPPaths: []string{"/api/v1/version"}, SkipGRPCMethods: []string{"/grpc.health.v1.Health/*"}, PSK: config.PSK{Enabled: true, Key: secret, GRPCMethods: []string{"/platform.billing.v1.BillingService/*"}}},
+		Auth:          config.Auth{ClientID: "client", ClientSecret: "secret", SkipHTTPPaths: []string{"/api/v1/version"}, SkipGRPCMethods: []string{"/grpc.health.v1.Health/*"}, PSK: config.PSK{Enabled: true, Key: secret, GRPCMethods: []string{"/platform.billing.v1.BillingService/*", "/platform.import.v1.ImportProviderService/*"}}},
 		Cron:          config.Cron{Enabled: false, Timezone: "UTC"},
 		Idempotency:   config.Idempotency{Enabled: true, ProcessingTTL: 30 * time.Second, ResultTTL: time.Hour, FailureTTL: time.Minute},
 	}
@@ -112,6 +114,45 @@ func TestHTTPAndGRPCEndToEnd(t *testing.T) {
 	_, err = billingv1.NewBillingServiceClient(connection).GetPlan(pskCtx, &billingv1.GetPlanRequest{Id: "missing-plan"})
 	if status.Code(err) != codes.NotFound {
 		t.Fatalf("PSK GetPlan must reach billing domain, got %v", err)
+	}
+	importClient := importv1.NewImportProviderServiceClient(connection)
+	descriptor, err := importClient.DescribeImportDataset(pskCtx, &importv1.DescribeImportDatasetRequest{TenantId: "tenant-1", DatasetCode: "billing.plans"})
+	if err != nil || descriptor.GetDataset().GetCode() != "billing.plans" {
+		t.Fatalf("import descriptor=%v err=%v", descriptor, err)
+	}
+	row, err := structpb.NewStruct(map[string]any{"code": "integration-plan", "name": "Integration", "currency": "CNY", "billing_interval": "month", "base_amount_minor": "9900", "trial_days": "7", "entitlements_json": `{"seats":10}`})
+	if err != nil {
+		t.Fatal(err)
+	}
+	validation, err := importClient.ValidateRows(pskCtx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := validation.Send(&importv1.ValidateRowsRequest{TenantId: "tenant-1", DatasetCode: "billing.plans", JobId: "job-1", BatchNumber: 1, FirstRowNumber: 2, Rows: []*structpb.Struct{row}}); err != nil {
+		t.Fatal(err)
+	}
+	validated, err := validation.Recv()
+	if err != nil || len(validated.GetIssues()) != 0 || len(validated.GetNormalizedRows()) != 1 {
+		t.Fatalf("validation=%v err=%v", validated, err)
+	}
+	_ = validation.CloseSend()
+	apply, err := importClient.ApplyRows(pskCtx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for batch := int64(1); batch <= 2; batch++ {
+		if err := apply.Send(&importv1.ApplyRowsRequest{TenantId: "tenant-1", DatasetCode: "billing.plans", JobId: "job-1", BatchNumber: batch, IdempotencyKey: fmt.Sprintf("job-1:%d", batch), Rows: validated.GetNormalizedRows()}); err != nil {
+			t.Fatal(err)
+		}
+		applied, recvErr := apply.Recv()
+		if recvErr != nil || applied.GetAppliedRows() != 1 || len(applied.GetIssues()) != 0 {
+			t.Fatalf("apply=%v err=%v", applied, recvErr)
+		}
+	}
+	_ = apply.CloseSend()
+	plan, err := billingv1.NewBillingServiceClient(connection).GetPlan(pskCtx, &billingv1.GetPlanRequest{Code: "integration-plan"})
+	if err != nil || plan.GetPlan().GetCode() != "integration-plan" {
+		t.Fatalf("imported plan=%v err=%v", plan, err)
 	}
 }
 
