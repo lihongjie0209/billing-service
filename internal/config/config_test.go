@@ -117,3 +117,25 @@ func TestConfig_RejectsNonCanonicalPlatformEventStream(t *testing.T) {
 		t.Fatal("expected non-canonical event stream rejection")
 	}
 }
+
+func TestLoadUsesSafeOutboxCleanupDefaults(t *testing.T) {
+	cfg, err := LoadWithProfile("../../config/config.yaml", "development")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.EventBus.PublishedRetention != 7*24*time.Hour || cfg.EventBus.CleanupInterval != time.Hour || cfg.EventBus.CleanupBatchSize != 1000 {
+		t.Fatalf("unexpected outbox cleanup defaults: %+v", cfg.EventBus)
+	}
+}
+
+func TestConfigRejectsOutboxRetentionShorterThanReplayWindow(t *testing.T) {
+	cfg, err := LoadWithProfile("../../config/config.yaml", "development")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.EventBus.Enabled = true
+	cfg.EventBus.PublishedRetention = cfg.EventBus.MaxAge - time.Second
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("Validate() error = nil, want outbox retention validation error")
+	}
+}

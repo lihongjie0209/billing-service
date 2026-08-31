@@ -1,0 +1,1 @@
+DROP INDEX billing_outbox_retention_idx;
