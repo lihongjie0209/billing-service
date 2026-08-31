@@ -14,7 +14,7 @@ func ToProtoUsagePrice(v UsagePrice) *billingv1.UsagePrice {
 	return &billingv1.UsagePrice{Id: v.ID, PlanId: v.PlanID, MeterCode: v.MeterCode, IncludedQuantity: v.IncludedQuantity, UnitQuantity: v.UnitQuantity, UnitAmountMinor: v.UnitAmountMinor, PricingModel: v.PricingModel, TiersJson: v.TiersJSON, Version: v.Version, CreatedAt: timestamppb.New(v.CreatedAt), UpdatedAt: timestamppb.New(v.UpdatedAt), CreatedBy: v.CreatedBy, UpdatedBy: v.UpdatedBy}
 }
 func ToProtoSubscription(v Subscription) *billingv1.Subscription {
-	return &billingv1.Subscription{Id: v.ID, TenantId: v.TenantID, PlanId: v.PlanID, Status: v.Status, CurrentPeriodStart: timestamppb.New(v.CurrentPeriodStart), CurrentPeriodEnd: timestamppb.New(v.CurrentPeriodEnd), CancelAtPeriodEnd: v.CancelAtPeriodEnd, CanceledAt: nullableTimestamp(v.CanceledAt), ExternalReference: v.ExternalReference, Version: v.Version, CreatedAt: timestamppb.New(v.CreatedAt), UpdatedAt: timestamppb.New(v.UpdatedAt), CreatedBy: v.CreatedBy, UpdatedBy: v.UpdatedBy, PendingPlanId: v.PendingPlanID, PendingChangeAt: nullableTimestamp(v.PendingChangeAt)}
+	return &billingv1.Subscription{Id: v.ID, TenantId: v.TenantID, PlanId: v.PlanID, Status: v.Status, CurrentPeriodStart: timestamppb.New(v.CurrentPeriodStart), CurrentPeriodEnd: timestamppb.New(v.CurrentPeriodEnd), CancelAtPeriodEnd: v.CancelAtPeriodEnd, CanceledAt: nullableTimestamp(v.CanceledAt), ExternalReference: v.ExternalReference, Version: v.Version, CreatedAt: timestamppb.New(v.CreatedAt), UpdatedAt: timestamppb.New(v.UpdatedAt), CreatedBy: v.CreatedBy, UpdatedBy: v.UpdatedBy, PendingPlanId: stringValue(v.PendingPlanID), PendingChangeAt: nullableTimestamp(v.PendingChangeAt)}
 }
 func ToProtoInvoice(v Invoice) *billingv1.Invoice {
 	return &billingv1.Invoice{Id: v.ID, Number: v.Number, TenantId: v.TenantID, SubscriptionId: v.SubscriptionID, Currency: v.Currency, Status: v.Status, PeriodStart: timestamppb.New(v.PeriodStart), PeriodEnd: timestamppb.New(v.PeriodEnd), SubtotalMinor: v.SubtotalMinor, DiscountMinor: v.DiscountMinor, TaxMinor: v.TaxMinor, TotalMinor: v.TotalMinor, PaidMinor: v.PaidMinor, RefundedMinor: v.RefundedMinor, DueAt: nullableTimestamp(v.DueAt), FinalizedAt: nullableTimestamp(v.FinalizedAt), PaidAt: nullableTimestamp(v.PaidAt), Version: v.Version, CreatedAt: timestamppb.New(v.CreatedAt), UpdatedAt: timestamppb.New(v.UpdatedAt), CreatedBy: v.CreatedBy, UpdatedBy: v.UpdatedBy}
@@ -40,4 +40,11 @@ func nullableTimestamp(value *time.Time) *timestamppb.Timestamp {
 		return nil
 	}
 	return timestamppb.New(*value)
+}
+
+func stringValue(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return *value
 }

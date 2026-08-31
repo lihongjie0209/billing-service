@@ -218,13 +218,13 @@ func (s *Service) ChangeSubscription(ctx context.Context, tenantID, id, planID, 
 	}
 	changeType := "plan_changed"
 	if effectiveMode == "next_period" {
-		value.PendingPlanID = plan.ID
+		value.PendingPlanID = &plan.ID
 		changeAt := value.CurrentPeriodEnd
 		value.PendingChangeAt = &changeAt
 		changeType = "plan_change_scheduled"
 	} else {
 		value.PlanID = plan.ID
-		value.PendingPlanID = ""
+		value.PendingPlanID = nil
 		value.PendingChangeAt = nil
 	}
 	value.Version = version + 1
@@ -258,7 +258,7 @@ func (s *Service) CancelSubscription(ctx context.Context, tenantID, id string, a
 	if !atPeriodEnd {
 		value.Status = "canceled"
 		value.CanceledAt = &now
-		value.PendingPlanID = ""
+		value.PendingPlanID = nil
 		value.PendingChangeAt = nil
 	}
 	value.Version = version + 1
@@ -300,18 +300,18 @@ func (s *Service) ApplyDueSubscriptionTransitions(ctx context.Context, limit int
 			current.Status = "canceled"
 			current.CanceledAt = &now
 			current.CancelAtPeriodEnd = false
-			current.PendingPlanID = ""
+			current.PendingPlanID = nil
 			current.PendingChangeAt = nil
 			changeType = "canceled"
-		} else if current.PendingPlanID != "" && current.PendingChangeAt != nil && !current.PendingChangeAt.After(now) {
-			plan, planErr := s.repository.GetPlan(ctx, current.PendingPlanID, "")
+		} else if current.PendingPlanID != nil && current.PendingChangeAt != nil && !current.PendingChangeAt.After(now) {
+			plan, planErr := s.repository.GetPlan(ctx, *current.PendingPlanID, "")
 			if planErr != nil {
 				return applied, translate(planErr)
 			}
 			current.PlanID = plan.ID
 			current.CurrentPeriodStart = current.CurrentPeriodEnd
 			current.CurrentPeriodEnd = addInterval(current.CurrentPeriodStart, plan.BillingInterval)
-			current.PendingPlanID = ""
+			current.PendingPlanID = nil
 			current.PendingChangeAt = nil
 		} else {
 			continue

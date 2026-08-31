@@ -46,7 +46,7 @@ type Subscription struct {
 	CancelAtPeriodEnd  bool       `db:"cancel_at_period_end" json:"cancel_at_period_end"`
 	CanceledAt         *time.Time `db:"canceled_at" json:"canceled_at,omitempty"`
 	ExternalReference  string     `db:"external_reference" json:"external_reference"`
-	PendingPlanID      string     `db:"pending_plan_id" json:"pending_plan_id"`
+	PendingPlanID      *string    `db:"pending_plan_id" json:"pending_plan_id,omitempty"`
 	PendingChangeAt    *time.Time `db:"pending_change_at" json:"pending_change_at,omitempty"`
 	Audit
 }

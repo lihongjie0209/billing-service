@@ -124,19 +124,12 @@ func (r *SQLRepository) ListUsagePrices(ctx context.Context, planID string) ([]U
 	return items, err
 }
 func (r *SQLRepository) CreateSubscription(ctx context.Context, e sqlx.ExtContext, v Subscription) error {
-	_, err := e.ExecContext(ctx, r.db.Rebind("INSERT INTO subscriptions ("+subscriptionColumns+") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"), v.ID, v.TenantID, v.PlanID, v.Status, v.CurrentPeriodStart, v.CurrentPeriodEnd, v.CancelAtPeriodEnd, v.CanceledAt, v.ExternalReference, nullableText(v.PendingPlanID), v.PendingChangeAt, v.Version, v.CreatedAt, v.UpdatedAt, v.CreatedBy, v.UpdatedBy)
+	_, err := e.ExecContext(ctx, r.db.Rebind("INSERT INTO subscriptions ("+subscriptionColumns+") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"), v.ID, v.TenantID, v.PlanID, v.Status, v.CurrentPeriodStart, v.CurrentPeriodEnd, v.CancelAtPeriodEnd, v.CanceledAt, v.ExternalReference, v.PendingPlanID, v.PendingChangeAt, v.Version, v.CreatedAt, v.UpdatedAt, v.CreatedBy, v.UpdatedBy)
 	return err
 }
 func (r *SQLRepository) UpdateSubscription(ctx context.Context, e sqlx.ExtContext, v Subscription, expected int64) error {
-	result, err := e.ExecContext(ctx, r.db.Rebind("UPDATE subscriptions SET plan_id=?,status=?,current_period_start=?,current_period_end=?,cancel_at_period_end=?,canceled_at=?,pending_plan_id=?,pending_change_at=?,version=version+1,updated_at=?,updated_by=? WHERE id=? AND version=?"), v.PlanID, v.Status, v.CurrentPeriodStart, v.CurrentPeriodEnd, v.CancelAtPeriodEnd, v.CanceledAt, nullableText(v.PendingPlanID), v.PendingChangeAt, v.UpdatedAt, v.UpdatedBy, v.ID, expected)
+	result, err := e.ExecContext(ctx, r.db.Rebind("UPDATE subscriptions SET plan_id=?,status=?,current_period_start=?,current_period_end=?,cancel_at_period_end=?,canceled_at=?,pending_plan_id=?,pending_change_at=?,version=version+1,updated_at=?,updated_by=? WHERE id=? AND version=?"), v.PlanID, v.Status, v.CurrentPeriodStart, v.CurrentPeriodEnd, v.CancelAtPeriodEnd, v.CanceledAt, v.PendingPlanID, v.PendingChangeAt, v.UpdatedAt, v.UpdatedBy, v.ID, expected)
 	return optimistic(result, err)
-}
-
-func nullableText(value string) any {
-	if strings.TrimSpace(value) == "" {
-		return nil
-	}
-	return value
 }
 func (r *SQLRepository) GetSubscription(ctx context.Context, tenantID, id string) (Subscription, error) {
 	var v Subscription
