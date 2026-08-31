@@ -12,7 +12,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/lihongjie0209/billing-service/internal/apperror"
 	"github.com/lihongjie0209/billing-service/internal/auth"
-	appauthorization "github.com/lihongjie0209/billing-service/internal/authorization"
 	"github.com/lihongjie0209/billing-service/internal/config"
 	"github.com/lihongjie0209/billing-service/internal/environment"
 	"github.com/lihongjie0209/billing-service/internal/idempotency"
@@ -222,7 +221,7 @@ func JWT(service *auth.Service, logger *slog.Logger) gin.HandlerFunc {
 		}
 		c.Set("subject", identity.ID)
 		ctx := platformprincipal.WithContext(c.Request.Context(), identity)
-		c.Request = c.Request.WithContext(appauthorization.WithCallerCredential(ctx, header))
+		c.Request = c.Request.WithContext(platformauthz.WithCallerCredential(ctx, header))
 		c.Next()
 	}
 }
