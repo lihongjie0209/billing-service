@@ -35,3 +35,10 @@ idempotency:
 observability:
   metrics_enabled: true
   tracing_enabled: false
+outbound:
+  http:
+    payment_gateway:
+      base_url: https://payment-gateway.platform-production.svc/
+      tls:
+        enabled: true
+        server_name: payment-gateway.platform-production.svc

@@ -120,4 +120,4 @@ var CacheModule = fx.Module("cache", fx.Provide(newRedis, newLocker), fx.Invoke(
 	}
 }))
 
-var BillingModule = fx.Module("billing", fx.Provide(billing.NewRepository, billing.NewMeteringClient, billing.NewService))
+var BillingModule = fx.Module("billing", fx.Provide(billing.NewRepository, billing.NewMeteringClient, billing.NewPaymentGateway, billing.NewRuntimeService))

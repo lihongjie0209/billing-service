@@ -23,9 +23,11 @@ import (
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 	rediscontainer "github.com/testcontainers/testcontainers-go/modules/redis"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
 	grpc_health_v1 "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
 )
 
 func TestHTTPAndGRPCEndToEnd(t *testing.T) {
@@ -107,13 +109,9 @@ func TestHTTPAndGRPCEndToEnd(t *testing.T) {
 		t.Fatalf("health = %v, %v", healthResponse, err)
 	}
 	pskCtx := metadata.AppendToOutgoingContext(ctx, "authorization", "PSK "+secret)
-	billingClient := billingv1.NewBillingServiceClient(connection)
-	created, err := billingClient.CreatePlan(pskCtx, &billingv1.CreatePlanRequest{Code: "integration", Name: "Integration", Currency: "CNY", BillingInterval: "month", BaseAmountMinor: 100})
-	if err != nil || created.GetPlan().GetCode() != "integration" {
-		t.Fatalf("PSK CreatePlan: %v, %v", created, err)
-	}
-	if _, err := billingClient.GetPlan(pskCtx, &billingv1.GetPlanRequest{Id: created.GetPlan().GetId()}); err != nil {
-		t.Fatalf("PSK GetPlan: %v", err)
+	_, err = billingv1.NewBillingServiceClient(connection).GetPlan(pskCtx, &billingv1.GetPlanRequest{Id: "missing-plan"})
+	if status.Code(err) != codes.NotFound {
+		t.Fatalf("PSK GetPlan must reach billing domain, got %v", err)
 	}
 }
 

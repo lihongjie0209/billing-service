@@ -72,9 +72,14 @@ func billingRequirement(method string) (platformauthz.Requirement, bool) {
 		billingv1.BillingService_UpdatePlan_FullMethodName:       "update",
 		billingv1.BillingService_UpsertUsagePrice_FullMethodName: "update",
 		billingv1.BillingService_DeleteUsagePrice_FullMethodName: "delete",
+		billingv1.BillingService_ReconcilePayment_FullMethodName: "reconcile",
 	}
 	action, ok := actions[method]
-	return platformauthz.Requirement{Resource: "billing.plan", Action: action}, ok
+	resource := "billing.plan"
+	if method == billingv1.BillingService_ReconcilePayment_FullMethodName {
+		resource = "billing.payment"
+	}
+	return platformauthz.Requirement{Resource: resource, Action: action}, ok
 }
 
 func (s *Server) start(enabled bool) func(context.Context) error {

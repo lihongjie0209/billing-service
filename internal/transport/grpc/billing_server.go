@@ -114,6 +114,14 @@ func (s *billingServer) RecordRefund(ctx context.Context, r *billingv1.RecordRef
 	refund, invoice, duplicate, err := s.service.RecordRefund(ctx, r.GetTenantId(), r.GetPaymentAttemptId(), r.GetProviderRefundId(), r.GetIdempotencyKey(), r.GetAmountMinor(), r.GetReason(), r.GetStatus())
 	return &billingv1.RecordRefundResponse{Refund: billing.ToProtoRefund(refund), Invoice: billing.ToProtoInvoice(invoice), Duplicate: duplicate}, billingError(err)
 }
+func (s *billingServer) ReconcilePayment(ctx context.Context, r *billingv1.ReconcilePaymentRequest) (*billingv1.ReconcilePaymentResponse, error) {
+	values, next, err := s.service.ReconcilePayment(ctx, r.GetProvider(), timestampValue(r.GetFrom()), timestampValue(r.GetTo()), r.GetCursor(), r.GetLimit())
+	items := make([]*billingv1.ReconciliationMismatch, len(values))
+	for i, value := range values {
+		items[i] = &billingv1.ReconciliationMismatch{ProviderPaymentId: value.ProviderPaymentID, PaymentAttemptId: value.PaymentAttemptID, Reason: value.Reason, ProviderAmountMinor: value.ProviderAmountMinor, LocalAmountMinor: value.LocalAmountMinor}
+	}
+	return &billingv1.ReconcilePaymentResponse{Mismatches: items, NextCursor: next}, billingError(err)
+}
 
 func protoPrices(values []billing.UsagePrice) []*billingv1.UsagePrice {
 	items := make([]*billingv1.UsagePrice, len(values))

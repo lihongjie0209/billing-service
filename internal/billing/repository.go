@@ -37,6 +37,7 @@ type Repository interface {
 	GetInvoice(context.Context, string, string) (Invoice, []InvoiceLine, error)
 	ListInvoices(context.Context, string, string, time.Time, time.Time, int, int) ([]Invoice, int64, error)
 	ClaimPayment(context.Context, sqlx.ExtContext, PaymentAttempt) (string, bool, error)
+	GetPaymentByKey(context.Context, string) (PaymentAttempt, error)
 	GetPayment(context.Context, string, string) (PaymentAttempt, error)
 	UpdatePayment(context.Context, sqlx.ExtContext, PaymentAttempt, int64) error
 	ClaimProviderEvent(context.Context, sqlx.ExtContext, string, string, string, Audit) (bool, error)
@@ -274,6 +275,11 @@ func (r *SQLRepository) GetPayment(ctx context.Context, tenantID, id string) (Pa
 	}
 	var v PaymentAttempt
 	err := r.db.GetContext(ctx, &v, r.db.Rebind(query), args...)
+	return v, notFound(err)
+}
+func (r *SQLRepository) GetPaymentByKey(ctx context.Context, key string) (PaymentAttempt, error) {
+	var v PaymentAttempt
+	err := r.db.GetContext(ctx, &v, r.db.Rebind("SELECT "+paymentColumns+" FROM payment_attempts WHERE idempotency_key=?"), key)
 	return v, notFound(err)
 }
 func (r *SQLRepository) UpdatePayment(ctx context.Context, e sqlx.ExtContext, v PaymentAttempt, expected int64) error {

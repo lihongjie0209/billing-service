@@ -36,6 +36,16 @@ type paymentRepository struct {
 func (r *paymentRepository) GetPayment(context.Context, string, string) (PaymentAttempt, error) {
 	return r.payment, nil
 }
+func (r *paymentRepository) GetPaymentByKey(_ context.Context, key string) (PaymentAttempt, error) {
+	if r.payment.IdempotencyKey == key {
+		return r.payment, nil
+	}
+	return PaymentAttempt{}, ErrNotFound
+}
+func (r *paymentRepository) ClaimPayment(_ context.Context, _ sqlx.ExtContext, v PaymentAttempt) (string, bool, error) {
+	r.payment = v
+	return v.ID, true, nil
+}
 func (r *paymentRepository) GetInvoice(context.Context, string, string) (Invoice, []InvoiceLine, error) {
 	return r.invoice, nil, nil
 }
@@ -51,6 +61,47 @@ func (r *paymentRepository) UpdateInvoice(_ context.Context, _ sqlx.ExtContext, 
 	return nil
 }
 func (*paymentRepository) AddOutbox(context.Context, sqlx.ExtContext, OutboxEvent) error { return nil }
+
+type paymentGatewayStub struct {
+	command PaymentCommand
+	result  PaymentGatewayResult
+}
+
+func (g *paymentGatewayStub) Create(_ context.Context, command PaymentCommand) (PaymentGatewayResult, error) {
+	g.command = command
+	return g.result, nil
+}
+func (*paymentGatewayStub) Reconcile(context.Context, string, time.Time, time.Time, string, uint32) ([]ReconciliationMismatch, string, error) {
+	return nil, "", nil
+}
+
+func TestCreatePaymentAttemptCallsGatewayAfterClaim(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, time.August, 31, 10, 0, 0, 0, time.FixedZone("UTC+8", 8*60*60))
+	repository := &paymentRepository{claim: true, invoice: Invoice{ID: "invoice-1", TenantID: "tenant-1", Currency: "CNY", TotalMinor: 900, Status: "open", Audit: Audit{Version: 1}}}
+	gateway := &paymentGatewayStub{result: PaymentGatewayResult{ProviderPaymentID: "provider-payment-1", ProviderEventID: "provider-event-1", Status: "succeeded", ProcessedAt: now}}
+	service := NewService(repository, nil, nil)
+	service.transactor, service.gateway, service.now = transactionStub{}, gateway, func() time.Time { return now }
+	ctx := platformprincipal.WithContext(t.Context(), platformprincipal.Principal{ID: "user-1", Type: platformprincipal.TypeUser, TenantID: "tenant-1"})
+	payment, duplicate, err := service.CreatePaymentAttempt(ctx, "tenant-1", "invoice-1", "demo", "payment-method-secret", "payment-key")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if duplicate || payment.Status != "succeeded" || gateway.command.PaymentMethodReference != "payment-method-secret" || gateway.command.AmountMinor != 900 {
+		t.Fatalf("payment=%+v duplicate=%v command=%+v", payment, duplicate, gateway.command)
+	}
+}
+
+func TestCreatePaymentAttemptReplaysCompletedResultAfterInvoicePaid(t *testing.T) {
+	t.Parallel()
+	repository := &paymentRepository{payment: PaymentAttempt{ID: "payment-1", InvoiceID: "invoice-1", TenantID: "tenant-1", Provider: "demo", IdempotencyKey: "payment-key", RequestHash: hashParts("tenant-1", "invoice-1", "demo", "payment-method-secret"), Status: "succeeded"}, invoice: Invoice{ID: "invoice-1", TenantID: "tenant-1", TotalMinor: 900, PaidMinor: 900, Status: "paid"}}
+	service := NewService(repository, nil, nil)
+	ctx := platformprincipal.WithContext(t.Context(), platformprincipal.Principal{ID: "user-1", Type: platformprincipal.TypeUser, TenantID: "tenant-1"})
+	payment, duplicate, err := service.CreatePaymentAttempt(ctx, "tenant-1", "invoice-1", "demo", "payment-method-secret", "payment-key")
+	if err != nil || !duplicate || payment.Status != "succeeded" {
+		t.Fatalf("payment=%+v duplicate=%v err=%v", payment, duplicate, err)
+	}
+}
 
 func TestApplyPaymentResultMarksInvoicePaid(t *testing.T) {
 	t.Parallel()
@@ -91,6 +142,16 @@ func TestRecordRefundRejectsAmountAboveRefundableBalance(t *testing.T) {
 	ctx := platformprincipal.WithContext(t.Context(), platformprincipal.Principal{ID: "user-1", Type: platformprincipal.TypeUser, TenantID: "tenant-1"})
 	if _, _, _, err := service.RecordRefund(ctx, "tenant-1", "payment-1", "provider-refund", "refund-key", 201, "duplicate", "succeeded"); err == nil {
 		t.Fatal("expected over-refund rejection")
+	}
+}
+
+func TestValidPaymentTransitionRejectsTerminalRegression(t *testing.T) {
+	t.Parallel()
+	if !validPaymentTransition("pending", "requires_action") || !validPaymentTransition("requires_action", "succeeded") {
+		t.Fatal("expected forward transitions")
+	}
+	if validPaymentTransition("succeeded", "pending") || validPaymentTransition("failed", "succeeded") {
+		t.Fatal("terminal payment status must not regress")
 	}
 }
 

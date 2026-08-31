@@ -34,6 +34,7 @@ type Service struct {
 	repository Repository
 	transactor transactionRunner
 	usage      UsageReader
+	gateway    PaymentGateway
 	now        func() time.Time
 }
 
@@ -43,6 +44,12 @@ type transactionRunner interface {
 
 func NewService(repository Repository, transactor *database.Transactor, usage UsageReader) *Service {
 	return &Service{repository: repository, transactor: transactor, usage: usage, now: time.Now}
+}
+
+func NewRuntimeService(repository Repository, transactor *database.Transactor, usage UsageReader, gateway PaymentGateway) *Service {
+	service := NewService(repository, transactor, usage)
+	service.gateway = gateway
+	return service
 }
 
 func (s *Service) CreatePlan(ctx context.Context, value Plan) (Plan, error) {
@@ -540,6 +547,26 @@ func (s *Service) CreatePaymentAttempt(ctx context.Context, tenantID, invoiceID,
 	if invoiceID == "" || provider == "" || paymentMethodReference == "" || key == "" {
 		return PaymentAttempt{}, false, apperror.Invalid("invoice_id, provider, payment_method_reference and idempotency_key are required", nil)
 	}
+	requestHash := hashParts(tenantID, invoiceID, provider, paymentMethodReference)
+	if existing, findErr := s.repository.GetPaymentByKey(ctx, key); findErr == nil {
+		if existing.TenantID != tenantID || existing.RequestHash != requestHash {
+			return PaymentAttempt{}, false, apperror.Conflict("idempotency key belongs to a different payment request", nil)
+		}
+		if existing.Status != "pending" && existing.Status != "requires_action" {
+			return existing, true, nil
+		}
+		if s.gateway == nil {
+			return existing, true, apperror.Unavailable("payment gateway is unavailable", nil)
+		}
+		result, gatewayErr := s.gateway.Create(ctx, PaymentCommand{AttemptID: existing.ID, TenantID: existing.TenantID, InvoiceID: existing.InvoiceID, Provider: existing.Provider, PaymentMethodReference: paymentMethodReference, Currency: existing.Currency, AmountMinor: existing.AmountMinor})
+		if gatewayErr != nil {
+			return existing, true, apperror.Unavailable("create provider payment", gatewayErr)
+		}
+		updated, _, _, applyErr := s.ApplyPaymentResult(ctx, existing.ID, result.ProviderPaymentID, result.ProviderEventID, result.Status, result.FailureCode, result.FailureMessage, result.ProcessedAt)
+		return updated, true, applyErr
+	} else if !errors.Is(findErr, ErrNotFound) {
+		return PaymentAttempt{}, false, translate(findErr)
+	}
 	invoice, _, err := s.repository.GetInvoice(ctx, tenantID, invoiceID)
 	if err != nil {
 		return PaymentAttempt{}, false, translate(err)
@@ -549,7 +576,7 @@ func (s *Service) CreatePaymentAttempt(ctx context.Context, tenantID, invoiceID,
 		return PaymentAttempt{}, false, apperror.Conflict("invoice is not payable", nil)
 	}
 	now := s.now()
-	value := PaymentAttempt{ID: uuid.NewString(), InvoiceID: invoice.ID, TenantID: tenantID, Provider: provider, IdempotencyKey: key, RequestHash: hashParts(tenantID, invoiceID, provider, paymentMethodReference), Currency: invoice.Currency, AmountMinor: outstanding, Status: "pending", Audit: newAudit(actorID, now)}
+	value := PaymentAttempt{ID: uuid.NewString(), InvoiceID: invoice.ID, TenantID: tenantID, Provider: provider, IdempotencyKey: key, RequestHash: requestHash, Currency: invoice.Currency, AmountMinor: outstanding, Status: "pending", Audit: newAudit(actorID, now)}
 	existingID := ""
 	created := false
 	err = s.transactor.Within(ctx, nil, func(tx *sqlx.Tx) error {
@@ -568,10 +595,23 @@ func (s *Service) CreatePaymentAttempt(ctx context.Context, tenantID, invoiceID,
 	}
 	if !created {
 		existing, getErr := s.repository.GetPayment(ctx, tenantID, existingID)
-		return existing, true, translate(getErr)
+		if getErr != nil {
+			return PaymentAttempt{}, true, translate(getErr)
+		}
+		value = existing
 	}
-	// paymentMethodReference deliberately remains process-local and is never persisted or emitted.
-	return value, false, nil
+	if value.Status != "pending" && value.Status != "requires_action" {
+		return value, !created, nil
+	}
+	if s.gateway == nil {
+		return value, !created, apperror.Unavailable("payment gateway is unavailable", nil)
+	}
+	result, gatewayErr := s.gateway.Create(ctx, PaymentCommand{AttemptID: value.ID, TenantID: value.TenantID, InvoiceID: value.InvoiceID, Provider: value.Provider, PaymentMethodReference: paymentMethodReference, Currency: value.Currency, AmountMinor: value.AmountMinor})
+	if gatewayErr != nil {
+		return value, !created, apperror.Unavailable("create provider payment", gatewayErr)
+	}
+	updated, _, _, applyErr := s.ApplyPaymentResult(ctx, value.ID, result.ProviderPaymentID, result.ProviderEventID, result.Status, result.FailureCode, result.FailureMessage, result.ProcessedAt)
+	return updated, !created, applyErr
 }
 
 func (s *Service) ApplyPaymentResult(ctx context.Context, paymentID, providerPaymentID, providerEventID, status, failureCode, failureMessage string, processedAt time.Time) (PaymentAttempt, Invoice, bool, error) {
@@ -588,8 +628,11 @@ func (s *Service) ApplyPaymentResult(ctx context.Context, paymentID, providerPay
 	}
 	status = strings.ToLower(strings.TrimSpace(status))
 	providerEventID = strings.TrimSpace(providerEventID)
-	if providerEventID == "" || !map[string]bool{"succeeded": true, "failed": true, "canceled": true}[status] {
-		return PaymentAttempt{}, Invoice{}, false, apperror.Invalid("provider_event_id and a terminal payment status are required", nil)
+	if providerEventID == "" || !map[string]bool{"pending": true, "requires_action": true, "succeeded": true, "failed": true, "canceled": true}[status] {
+		return PaymentAttempt{}, Invoice{}, false, apperror.Invalid("provider_event_id and a valid payment status are required", nil)
+	}
+	if !validPaymentTransition(value.Status, status) {
+		return PaymentAttempt{}, Invoice{}, false, apperror.Conflict("payment status transition is not allowed", nil)
 	}
 	invoice, _, err := s.repository.GetInvoice(ctx, value.TenantID, value.InvoiceID)
 	if err != nil {
@@ -633,6 +676,18 @@ func (s *Service) ApplyPaymentResult(ctx context.Context, paymentID, providerPay
 		return s.addEvent(ctx, tx, "platform.billing.payment.changed.v1", "platform.billing.v1.PaymentChanged", value.ID, "payment_attempt", value.TenantID, actorID, now, &billingv1.PaymentChangedEvent{PaymentAttempt: ToProtoPayment(value), Invoice: ToProtoInvoice(invoice), ChangeType: status})
 	})
 	return value, invoice, duplicate, translate(err)
+}
+
+func validPaymentTransition(from, to string) bool {
+	if from == to {
+		return true
+	}
+	switch from {
+	case "pending", "requires_action":
+		return map[string]bool{"pending": true, "requires_action": true, "succeeded": true, "failed": true, "canceled": true}[to]
+	default:
+		return false
+	}
 }
 
 func (s *Service) RecordRefund(ctx context.Context, tenantID, paymentID, providerRefundID, key string, amount int64, reason, status string) (Refund, Invoice, bool, error) {
@@ -694,6 +749,24 @@ func (s *Service) RecordRefund(ctx context.Context, tenantID, paymentID, provide
 		return existing, invoice, true, translate(getErr)
 	}
 	return value, invoice, false, nil
+}
+
+func (s *Service) ReconcilePayment(ctx context.Context, provider string, from, to time.Time, cursor string, limit uint32) ([]ReconciliationMismatch, string, error) {
+	if _, err := actor(ctx); err != nil {
+		return nil, "", err
+	}
+	provider = strings.ToLower(strings.TrimSpace(provider))
+	if provider == "" || from.IsZero() || to.IsZero() || !to.After(from) || limit == 0 || limit > 500 {
+		return nil, "", apperror.Invalid("provider, valid time range, and limit 1..500 are required", nil)
+	}
+	if s.gateway == nil {
+		return nil, "", apperror.Unavailable("payment gateway is unavailable", nil)
+	}
+	values, next, err := s.gateway.Reconcile(ctx, provider, from, to, strings.TrimSpace(cursor), limit)
+	if err != nil {
+		return nil, "", apperror.Unavailable("reconcile provider payments", err)
+	}
+	return values, next, nil
 }
 
 func (s *Service) addEvent(ctx context.Context, tx *sqlx.Tx, subject, eventType, aggregateID, aggregateType, tenantID, actorID string, at time.Time, payload proto.Message) error {
