@@ -70,6 +70,7 @@ const invoiceColumns = "id,number,tenant_id,application_id,subscription_id,curre
 const invoiceLineColumns = "id,invoice_id,type,description,meter_code,quantity,unit_quantity,unit_amount_minor,amount_minor,metadata_json,version,created_at,updated_at,created_by,updated_by"
 const paymentColumns = "id,invoice_id,tenant_id,application_id,provider,provider_payment_id,idempotency_key,request_hash,currency,amount_minor,status,failure_code,failure_message,processed_at,version,created_at,updated_at,created_by,updated_by"
 const refundColumns = "id,payment_attempt_id,invoice_id,tenant_id,application_id,provider_refund_id,idempotency_key,request_hash,amount_minor,reason,status,version,created_at,updated_at,created_by,updated_by"
+const refundInsertValues = "(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
 
 func (r *SQLRepository) CreatePlan(ctx context.Context, e sqlx.ExtContext, v Plan) error {
 	_, err := e.ExecContext(ctx, r.db.Rebind("INSERT INTO plans ("+planColumns+") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"), v.ID, v.Code, v.Name, v.Description, v.Currency, v.BillingInterval, v.BaseAmountMinor, v.TrialDays, v.Status, v.EntitlementsJSON, v.Version, v.CreatedAt, v.UpdatedAt, v.CreatedBy, v.UpdatedBy)
@@ -316,9 +317,9 @@ func (r *SQLRepository) ClaimProviderEvent(ctx context.Context, e sqlx.ExtContex
 	return rows == 1, err
 }
 func (r *SQLRepository) ClaimRefund(ctx context.Context, e sqlx.ExtContext, v Refund) (string, bool, error) {
-	query := "INSERT INTO refunds (" + refundColumns + ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT (idempotency_key) DO NOTHING"
+	query := "INSERT INTO refunds (" + refundColumns + ") VALUES " + refundInsertValues + " ON CONFLICT (idempotency_key) DO NOTHING"
 	if r.db.DriverName() == "mysql" {
-		query = "INSERT IGNORE INTO refunds (" + refundColumns + ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+		query = "INSERT IGNORE INTO refunds (" + refundColumns + ") VALUES " + refundInsertValues
 	}
 	result, err := e.ExecContext(ctx, r.db.Rebind(query), v.ID, v.PaymentAttemptID, v.InvoiceID, v.TenantID, v.ApplicationID, v.ProviderRefundID, v.IdempotencyKey, v.RequestHash, v.AmountMinor, v.Reason, v.Status, v.Version, v.CreatedAt, v.UpdatedAt, v.CreatedBy, v.UpdatedBy)
 	if err != nil {
