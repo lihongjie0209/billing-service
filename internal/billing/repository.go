@@ -39,10 +39,12 @@ type Repository interface {
 	ClaimPayment(context.Context, sqlx.ExtContext, PaymentAttempt) (string, bool, error)
 	GetPaymentByKey(context.Context, string) (PaymentAttempt, error)
 	GetPayment(context.Context, string, string, string) (PaymentAttempt, error)
+	ListPayments(context.Context, string, string, string, int, int) ([]PaymentAttempt, int64, error)
 	UpdatePayment(context.Context, sqlx.ExtContext, PaymentAttempt, int64) error
 	ClaimProviderEvent(context.Context, sqlx.ExtContext, string, string, string, Audit) (bool, error)
 	ClaimRefund(context.Context, sqlx.ExtContext, Refund) (string, bool, error)
 	GetRefund(context.Context, string) (Refund, error)
+	ListRefunds(context.Context, string, string, string, int, int) ([]Refund, int64, error)
 	AddOutbox(context.Context, sqlx.ExtContext, OutboxEvent) error
 }
 
@@ -277,6 +279,21 @@ func (r *SQLRepository) GetPayment(ctx context.Context, tenantID, applicationID,
 	err := r.db.GetContext(ctx, &v, r.db.Rebind(query), args...)
 	return v, notFound(err)
 }
+func (r *SQLRepository) ListPayments(ctx context.Context, tenantID, applicationID, status string, limit, offset int) ([]PaymentAttempt, int64, error) {
+	where, args := "tenant_id=? AND application_id=?", []any{tenantID, applicationID}
+	if status != "" {
+		where += " AND status=?"
+		args = append(args, status)
+	}
+	var total int64
+	if err := r.db.GetContext(ctx, &total, r.db.Rebind("SELECT COUNT(*) FROM payment_attempts WHERE "+where), args...); err != nil {
+		return nil, 0, err
+	}
+	items := []PaymentAttempt{}
+	pageArgs := append(append([]any{}, args...), limit, offset)
+	err := r.db.SelectContext(ctx, &items, r.db.Rebind("SELECT "+paymentColumns+" FROM payment_attempts WHERE "+where+" ORDER BY created_at DESC,id LIMIT ? OFFSET ?"), pageArgs...)
+	return items, total, err
+}
 func (r *SQLRepository) GetPaymentByKey(ctx context.Context, key string) (PaymentAttempt, error) {
 	var v PaymentAttempt
 	err := r.db.GetContext(ctx, &v, r.db.Rebind("SELECT "+paymentColumns+" FROM payment_attempts WHERE idempotency_key=?"), key)
@@ -327,6 +344,21 @@ func (r *SQLRepository) GetRefund(ctx context.Context, id string) (Refund, error
 	var v Refund
 	err := r.db.GetContext(ctx, &v, r.db.Rebind("SELECT "+refundColumns+" FROM refunds WHERE id=?"), id)
 	return v, notFound(err)
+}
+func (r *SQLRepository) ListRefunds(ctx context.Context, tenantID, applicationID, status string, limit, offset int) ([]Refund, int64, error) {
+	where, args := "tenant_id=? AND application_id=?", []any{tenantID, applicationID}
+	if status != "" {
+		where += " AND status=?"
+		args = append(args, status)
+	}
+	var total int64
+	if err := r.db.GetContext(ctx, &total, r.db.Rebind("SELECT COUNT(*) FROM refunds WHERE "+where), args...); err != nil {
+		return nil, 0, err
+	}
+	items := []Refund{}
+	pageArgs := append(append([]any{}, args...), limit, offset)
+	err := r.db.SelectContext(ctx, &items, r.db.Rebind("SELECT "+refundColumns+" FROM refunds WHERE "+where+" ORDER BY created_at DESC,id LIMIT ? OFFSET ?"), pageArgs...)
+	return items, total, err
 }
 func (r *SQLRepository) AddOutbox(ctx context.Context, e sqlx.ExtContext, v OutboxEvent) error {
 	_, err := e.ExecContext(ctx, r.db.Rebind("INSERT INTO billing_outbox_events (id,subject,envelope,attempts,available_at,published_at,last_error,version,created_at,updated_at,created_by,updated_by) VALUES (?,?,?,0,?,NULL,'',1,?,?,?,?)"), v.ID, v.Subject, v.Envelope, v.AvailableAt, v.CreatedAt, v.UpdatedAt, v.CreatedBy, v.UpdatedBy)

@@ -198,6 +198,17 @@ func listInvoicesDocs() {}
 // @Router /api/v1/payments/create-attempt [post]
 func createPaymentDocs() {}
 
+// listPaymentsDocs godoc
+// @Summary List application payment attempts
+// @Tags payments
+// @Accept json
+// @Produce json
+// @Security Bearer
+// @Param request body listPaymentsRequest true "Filters and pagination"
+// @Success 200 {object} Response
+// @Router /api/v1/payments/list [post]
+func listPaymentsDocs() {}
+
 // applyPaymentDocs godoc
 // @Summary Apply an idempotent payment-provider result
 // @Tags payments
@@ -220,10 +231,21 @@ func applyPaymentDocs() {}
 // @Router /api/v1/payments/refunds/record [post]
 func recordRefundDocs() {}
 
+// listRefundsDocs godoc
+// @Summary List application refunds
+// @Tags payments
+// @Accept json
+// @Produce json
+// @Security Bearer
+// @Param request body listPaymentsRequest true "Filters and pagination"
+// @Success 200 {object} Response
+// @Router /api/v1/payments/refunds/list [post]
+func listRefundsDocs() {}
+
 var BillingOpenAPIOperations = []func(){
 	createPlanDocs, updatePlanDocs, getPlanDocs, listPlansDocs,
 	upsertUsagePriceDocs, deleteUsagePriceDocs,
 	createSubscriptionDocs, changeSubscriptionDocs, cancelSubscriptionDocs, getSubscriptionDocs, listSubscriptionsDocs,
 	previewInvoiceDocs, generateInvoiceDocs, finalizeInvoiceDocs, voidInvoiceDocs, getInvoiceDocs, listInvoicesDocs,
-	createPaymentDocs, applyPaymentDocs, recordRefundDocs,
+	createPaymentDocs, listPaymentsDocs, applyPaymentDocs, recordRefundDocs, listRefundsDocs,
 }

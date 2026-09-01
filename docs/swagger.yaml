@@ -222,6 +222,21 @@ definitions:
     required:
     - application_id
     type: object
+  httptransport.listPaymentsRequest:
+    properties:
+      application_id:
+        type: string
+      page:
+        type: integer
+      page_size:
+        type: integer
+      status:
+        type: string
+      tenant_id:
+        type: string
+    required:
+    - application_id
+    type: object
   httptransport.listPlansRequest:
     properties:
       keyword:
@@ -540,6 +555,52 @@ paths:
       security:
       - Bearer: []
       summary: Create an idempotent payment attempt
+      tags:
+      - payments
+  /api/v1/payments/list:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Filters and pagination
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/httptransport.listPaymentsRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httptransport.Response'
+      security:
+      - Bearer: []
+      summary: List application payment attempts
+      tags:
+      - payments
+  /api/v1/payments/refunds/list:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Filters and pagination
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/httptransport.listPaymentsRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httptransport.Response'
+      security:
+      - Bearer: []
+      summary: List application refunds
       tags:
       - payments
   /api/v1/payments/refunds/record:

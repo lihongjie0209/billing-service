@@ -64,6 +64,48 @@ type subscriptionRepository struct {
 	outbox OutboxEvent
 }
 
+type paymentListRepository struct {
+	Repository
+	paymentTenantID      string
+	paymentApplicationID string
+	refundTenantID       string
+	refundApplicationID  string
+}
+
+func (r *paymentListRepository) ListPayments(_ context.Context, tenantID, applicationID, _ string, _, _ int) ([]PaymentAttempt, int64, error) {
+	r.paymentTenantID, r.paymentApplicationID = tenantID, applicationID
+	return []PaymentAttempt{{ID: "payment-1", TenantID: tenantID, ApplicationID: applicationID}}, 1, nil
+}
+
+func (r *paymentListRepository) ListRefunds(_ context.Context, tenantID, applicationID, _ string, _, _ int) ([]Refund, int64, error) {
+	r.refundTenantID, r.refundApplicationID = tenantID, applicationID
+	return []Refund{{ID: "refund-1", TenantID: tenantID, ApplicationID: applicationID}}, 1, nil
+}
+
+func TestListPaymentsAndRefundsPreserveApplicationScope(t *testing.T) {
+	t.Parallel()
+	repository := &paymentListRepository{}
+	service := newTestService(t, repository, nil)
+	ctx := platformprincipal.WithContext(t.Context(), platformprincipal.Principal{
+		ID:       "user-1",
+		Type:     platformprincipal.TypeUser,
+		TenantID: "tenant-1",
+	})
+
+	payments, err := service.ListPayments(ctx, "tenant-1", "app-1", "succeeded", 1, 20)
+	if err != nil || payments.Total != 1 || len(payments.Items) != 1 {
+		t.Fatalf("ListPayments() = %+v, %v", payments, err)
+	}
+	refunds, err := service.ListRefunds(ctx, "tenant-1", "app-1", "succeeded", 1, 20)
+	if err != nil || refunds.Total != 1 || len(refunds.Items) != 1 {
+		t.Fatalf("ListRefunds() = %+v, %v", refunds, err)
+	}
+	if repository.paymentTenantID != "tenant-1" || repository.paymentApplicationID != "app-1" ||
+		repository.refundTenantID != "tenant-1" || repository.refundApplicationID != "app-1" {
+		t.Fatalf("repository scopes = payment %s/%s refund %s/%s", repository.paymentTenantID, repository.paymentApplicationID, repository.refundTenantID, repository.refundApplicationID)
+	}
+}
+
 func (*subscriptionRepository) GetPlan(context.Context, string, string) (Plan, error) {
 	return Plan{ID: "plan-1", Status: "active", BillingInterval: "month"}, nil
 }

@@ -288,8 +288,10 @@ func billingHTTPRequirement(route string) (platformauthz.Requirement, bool) {
 		"/api/v1/invoices/get":              {Resource: "billing.invoice", Action: "read", Scope: platformauthz.ScopePrincipal},
 		"/api/v1/invoices/list":             {Resource: "billing.invoice", Action: "list", Scope: platformauthz.ScopePrincipal},
 		"/api/v1/payments/create-attempt":   {Resource: "billing.payment", Action: "create", Scope: platformauthz.ScopePrincipal},
+		"/api/v1/payments/list":             {Resource: "billing.payment", Action: "list", Scope: platformauthz.ScopePrincipal},
 		"/api/v1/payments/apply-result":     {Resource: "billing.payment", Action: "apply_result", Scope: platformauthz.ScopePrincipal},
 		"/api/v1/payments/refunds/record":   {Resource: "billing.payment", Action: "refund", Scope: platformauthz.ScopePrincipal},
+		"/api/v1/payments/refunds/list":     {Resource: "billing.payment", Action: "list", Scope: platformauthz.ScopePrincipal},
 	}
 	requirement, ok := requirements[route]
 	return requirement, ok

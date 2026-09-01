@@ -99,6 +99,24 @@ func TestRepositoryAndMigrations(t *testing.T) {
 			if err != nil || !replayedDuplicate || replayed.Invoice.ID != invoice.Invoice.ID {
 				t.Fatalf("replay invoice=%s duplicate=%v err=%v", replayed.Invoice.ID, replayedDuplicate, err)
 			}
+			now := time.Now()
+			audit := billing.Audit{Version: 1, CreatedAt: now, UpdatedAt: now, CreatedBy: "integration-service", UpdatedBy: "integration-service"}
+			payment := billing.PaymentAttempt{ID: "payment-" + databaseType, InvoiceID: invoice.Invoice.ID, TenantID: "tenant-integration", ApplicationID: "app-integration", Provider: "test", ProviderPaymentID: "provider-payment", IdempotencyKey: "payment-key-" + databaseType, RequestHash: "payment-hash", Currency: "CNY", AmountMinor: 100, Status: "succeeded", Audit: audit}
+			if _, created, err := repository.ClaimPayment(ctx, db, payment); err != nil || !created {
+				t.Fatalf("claim payment created=%v err=%v", created, err)
+			}
+			refund := billing.Refund{ID: "refund-" + databaseType, PaymentAttemptID: payment.ID, InvoiceID: invoice.Invoice.ID, TenantID: "tenant-integration", ApplicationID: "app-integration", ProviderRefundID: "provider-refund", IdempotencyKey: "refund-key-" + databaseType, RequestHash: "refund-hash", AmountMinor: 25, Reason: "integration", Status: "succeeded", Audit: audit}
+			if _, created, err := repository.ClaimRefund(ctx, db, refund); err != nil || !created {
+				t.Fatalf("claim refund created=%v err=%v", created, err)
+			}
+			payments, paymentTotal, err := repository.ListPayments(ctx, "tenant-integration", "app-integration", "succeeded", 20, 0)
+			if err != nil || paymentTotal != 1 || len(payments) != 1 || payments[0].ID != payment.ID {
+				t.Fatalf("list payments total=%d items=%+v err=%v", paymentTotal, payments, err)
+			}
+			refunds, refundTotal, err := repository.ListRefunds(ctx, "tenant-integration", "app-integration", "succeeded", 20, 0)
+			if err != nil || refundTotal != 1 || len(refunds) != 1 || refunds[0].ID != refund.ID {
+				t.Fatalf("list refunds total=%d items=%+v err=%v", refundTotal, refunds, err)
+			}
 			if err := db.Close(); err != nil {
 				t.Fatal(err)
 			}

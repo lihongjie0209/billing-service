@@ -153,6 +153,12 @@ type recordRefundRequest struct {
 	Reason           string `json:"reason"`
 	Status           string `json:"status"`
 }
+type listPaymentsRequest struct {
+	TenantID      string `json:"tenant_id"`
+	ApplicationID string `json:"application_id" binding:"required"`
+	Status        string `json:"status"`
+	pageRequest
+}
 
 type planView struct {
 	billing.Plan
@@ -175,7 +181,8 @@ func registerBillingRoutes(api *gin.RouterGroup, h *Handler) {
 		"/plans/usage-prices/upsert": h.UpsertUsagePrice, "/plans/usage-prices/delete": h.DeleteUsagePrice,
 		"/subscriptions/create": h.CreateSubscription, "/subscriptions/change": h.ChangeSubscription, "/subscriptions/cancel": h.CancelSubscription, "/subscriptions/get": h.GetSubscription, "/subscriptions/list": h.ListSubscriptions,
 		"/invoices/preview": h.PreviewInvoice, "/invoices/generate": h.GenerateInvoice, "/invoices/finalize": h.FinalizeInvoice, "/invoices/void": h.VoidInvoice, "/invoices/get": h.GetInvoice, "/invoices/list": h.ListInvoices,
-		"/payments/create-attempt": h.CreatePaymentAttempt, "/payments/apply-result": h.ApplyPaymentResult, "/payments/refunds/record": h.RecordRefund,
+		"/payments/create-attempt": h.CreatePaymentAttempt, "/payments/apply-result": h.ApplyPaymentResult, "/payments/list": h.ListPayments,
+		"/payments/refunds/record": h.RecordRefund, "/payments/refunds/list": h.ListRefunds,
 	} {
 		api.POST(path, handler)
 	}
@@ -393,6 +400,14 @@ func (h *Handler) CreatePaymentAttempt(c *gin.Context) {
 	v, d, e := h.billing.CreatePaymentAttempt(c.Request.Context(), r.TenantID, r.ApplicationID, r.InvoiceID, r.Provider, r.PaymentMethodReference, r.IdempotencyKey)
 	result(h, c, gin.H{"payment_attempt": v, "duplicate": d}, e)
 }
+func (h *Handler) ListPayments(c *gin.Context) {
+	r, ok := decode[listPaymentsRequest](h, c)
+	if !ok {
+		return
+	}
+	v, e := h.billing.ListPayments(c.Request.Context(), r.TenantID, r.ApplicationID, r.Status, r.Page, r.PageSize)
+	result(h, c, v, e)
+}
 func (h *Handler) ApplyPaymentResult(c *gin.Context) {
 	r, ok := decode[applyPaymentRequest](h, c)
 	if !ok {
@@ -408,4 +423,12 @@ func (h *Handler) RecordRefund(c *gin.Context) {
 	}
 	v, i, d, e := h.billing.RecordRefund(c.Request.Context(), r.TenantID, r.ApplicationID, r.PaymentAttemptID, r.ProviderRefundID, r.IdempotencyKey, r.AmountMinor, r.Reason, r.Status)
 	result(h, c, gin.H{"refund": v, "invoice": i, "duplicate": d}, e)
+}
+func (h *Handler) ListRefunds(c *gin.Context) {
+	r, ok := decode[listPaymentsRequest](h, c)
+	if !ok {
+		return
+	}
+	v, e := h.billing.ListRefunds(c.Request.Context(), r.TenantID, r.ApplicationID, r.Status, r.Page, r.PageSize)
+	result(h, c, v, e)
 }

@@ -697,6 +697,21 @@ func (s *Service) CreatePaymentAttempt(ctx context.Context, tenantID, applicatio
 	return updated, !created, applyErr
 }
 
+func (s *Service) ListPayments(ctx context.Context, tenantID, applicationID, status string, page, size int) (Page[PaymentAttempt], error) {
+	if err := authorizeTenant(ctx, tenantID); err != nil {
+		return Page[PaymentAttempt]{}, err
+	}
+	if err := s.verifyApplication(ctx, tenantID, applicationID); err != nil {
+		return Page[PaymentAttempt]{}, err
+	}
+	page, size, err := pagination(page, size)
+	if err != nil {
+		return Page[PaymentAttempt]{}, err
+	}
+	items, total, err := s.repository.ListPayments(ctx, tenantID, applicationID, strings.TrimSpace(status), size, (page-1)*size)
+	return Page[PaymentAttempt]{Items: items, Total: total, Page: page, PageSize: size}, translate(err)
+}
+
 func (s *Service) ApplyPaymentResult(ctx context.Context, paymentID, providerPaymentID, providerEventID, status, failureCode, failureMessage string, processedAt time.Time) (PaymentAttempt, Invoice, bool, error) {
 	actorID, err := actor(ctx)
 	if err != nil {
@@ -838,6 +853,21 @@ func (s *Service) RecordRefund(ctx context.Context, tenantID, applicationID, pay
 		return existing, invoice, true, translate(getErr)
 	}
 	return value, invoice, false, nil
+}
+
+func (s *Service) ListRefunds(ctx context.Context, tenantID, applicationID, status string, page, size int) (Page[Refund], error) {
+	if err := authorizeTenant(ctx, tenantID); err != nil {
+		return Page[Refund]{}, err
+	}
+	if err := s.verifyApplication(ctx, tenantID, applicationID); err != nil {
+		return Page[Refund]{}, err
+	}
+	page, size, err := pagination(page, size)
+	if err != nil {
+		return Page[Refund]{}, err
+	}
+	items, total, err := s.repository.ListRefunds(ctx, tenantID, applicationID, strings.TrimSpace(status), size, (page-1)*size)
+	return Page[Refund]{Items: items, Total: total, Page: page, PageSize: size}, translate(err)
 }
 
 func (s *Service) ReconcilePayment(ctx context.Context, provider string, from, to time.Time, cursor string, limit uint32) ([]ReconciliationMismatch, string, error) {
