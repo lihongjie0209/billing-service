@@ -1023,7 +1023,13 @@
         },
         "httptransport.cancelSubscriptionRequest": {
             "type": "object",
+            "required": [
+                "application_id"
+            ],
             "properties": {
+                "application_id": {
+                    "type": "string"
+                },
                 "at_period_end": {
                     "type": "boolean"
                 },
@@ -1040,7 +1046,13 @@
         },
         "httptransport.changeSubscriptionRequest": {
             "type": "object",
+            "required": [
+                "application_id"
+            ],
             "properties": {
+                "application_id": {
+                    "type": "string"
+                },
                 "effective_mode": {
                     "type": "string"
                 },
@@ -1060,7 +1072,13 @@
         },
         "httptransport.createPaymentRequest": {
             "type": "object",
+            "required": [
+                "application_id"
+            ],
             "properties": {
+                "application_id": {
+                    "type": "string"
+                },
                 "idempotency_key": {
                     "type": "string"
                 },
@@ -1109,7 +1127,13 @@
         },
         "httptransport.createSubscriptionRequest": {
             "type": "object",
+            "required": [
+                "application_id"
+            ],
             "properties": {
+                "application_id": {
+                    "type": "string"
+                },
                 "external_reference": {
                     "type": "string"
                 },
@@ -1126,7 +1150,13 @@
         },
         "httptransport.finalizeInvoiceRequest": {
             "type": "object",
+            "required": [
+                "application_id"
+            ],
             "properties": {
+                "application_id": {
+                    "type": "string"
+                },
                 "due_at": {
                     "type": "string"
                 },
@@ -1154,7 +1184,13 @@
         },
         "httptransport.getSubscriptionRequest": {
             "type": "object",
+            "required": [
+                "application_id"
+            ],
             "properties": {
+                "application_id": {
+                    "type": "string"
+                },
                 "id": {
                     "type": "string"
                 },
@@ -1179,7 +1215,13 @@
         },
         "httptransport.invoicePeriodRequest": {
             "type": "object",
+            "required": [
+                "application_id"
+            ],
             "properties": {
+                "application_id": {
+                    "type": "string"
+                },
                 "idempotency_key": {
                     "type": "string"
                 },
@@ -1199,7 +1241,13 @@
         },
         "httptransport.listInvoicesRequest": {
             "type": "object",
+            "required": [
+                "application_id"
+            ],
             "properties": {
+                "application_id": {
+                    "type": "string"
+                },
                 "created_from": {
                     "type": "string"
                 },
@@ -1239,7 +1287,13 @@
         },
         "httptransport.listSubscriptionsRequest": {
             "type": "object",
+            "required": [
+                "application_id"
+            ],
             "properties": {
+                "application_id": {
+                    "type": "string"
+                },
                 "page": {
                     "type": "integer"
                 },
@@ -1256,9 +1310,15 @@
         },
         "httptransport.recordRefundRequest": {
             "type": "object",
+            "required": [
+                "application_id"
+            ],
             "properties": {
                 "amount_minor": {
                     "type": "integer"
+                },
+                "application_id": {
+                    "type": "string"
                 },
                 "idempotency_key": {
                     "type": "string"
@@ -1346,7 +1406,13 @@
         },
         "httptransport.voidInvoiceRequest": {
             "type": "object",
+            "required": [
+                "application_id"
+            ],
             "properties": {
+                "application_id": {
+                    "type": "string"
+                },
                 "id": {
                     "type": "string"
                 },

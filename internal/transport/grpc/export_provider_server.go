@@ -41,12 +41,16 @@ func (s *exportProviderServer) StreamRows(r *exportv1.StreamRowsRequest, stream 
 		return err
 	}
 	var query struct {
-		Status      string `json:"status"`
-		CreatedFrom string `json:"created_from"`
-		CreatedTo   string `json:"created_to"`
+		ApplicationID string `json:"application_id"`
+		Status        string `json:"status"`
+		CreatedFrom   string `json:"created_from"`
+		CreatedTo     string `json:"created_to"`
 	}
 	if r.GetQueryJson() != "" && json.Unmarshal([]byte(r.GetQueryJson()), &query) != nil {
 		return status.Error(codes.InvalidArgument, "query_json must be an object")
+	}
+	if query.ApplicationID == "" {
+		return status.Error(codes.InvalidArgument, "query_json.application_id is required")
 	}
 	from, err := parseOptionalTime(query.CreatedFrom)
 	if err != nil {
@@ -71,7 +75,7 @@ func (s *exportProviderServer) StreamRows(r *exportv1.StreamRowsRequest, stream 
 		size = 100
 	}
 	for {
-		values, err := s.service.ListInvoices(stream.Context(), r.GetTenantId(), query.Status, from, to, page, size)
+		values, err := s.service.ListInvoices(stream.Context(), r.GetTenantId(), query.ApplicationID, query.Status, from, to, page, size)
 		if err != nil {
 			return billingError(err)
 		}

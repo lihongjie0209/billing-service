@@ -73,7 +73,10 @@ func TestRepositoryAndMigrations(t *testing.T) {
 				t.Fatalf("billing table count = %d, want 6", billingTables)
 			}
 			repository := billing.NewRepository(db)
-			service := billing.NewService(repository, appdb.NewTransactor(db), zeroUsage{})
+			service, err := billing.NewService(repository, appdb.NewTransactor(db), zeroUsage{}, allowApplicationVerifier{})
+			if err != nil {
+				t.Fatal(err)
+			}
 			actorCtx := platformprincipal.WithContext(ctx, platformprincipal.Principal{ID: "integration-service", Type: platformprincipal.TypeServiceAccount})
 			plan, err := service.CreatePlan(actorCtx, billing.Plan{Code: "integration." + databaseType, Name: "Integration", Currency: "CNY", BillingInterval: "month", BaseAmountMinor: 100})
 			if err != nil {
@@ -84,15 +87,15 @@ func TestRepositoryAndMigrations(t *testing.T) {
 			if err != nil {
 				t.Fatalf("activate plan: %v", err)
 			}
-			subscription, err := service.CreateSubscription(actorCtx, "tenant-integration", plan.ID, time.Now(), "")
+			subscription, err := service.CreateSubscription(actorCtx, "tenant-integration", "app-integration", plan.ID, time.Now(), "")
 			if err != nil {
 				t.Fatalf("create subscription: %v", err)
 			}
-			invoice, duplicate, err := service.GenerateInvoice(actorCtx, "tenant-integration", subscription.ID, time.Time{}, time.Time{}, "invoice-integration-key")
+			invoice, duplicate, err := service.GenerateInvoice(actorCtx, "tenant-integration", "app-integration", subscription.ID, time.Time{}, time.Time{}, "invoice-integration-key")
 			if err != nil || duplicate {
 				t.Fatalf("generate invoice duplicate=%v err=%v", duplicate, err)
 			}
-			replayed, replayedDuplicate, err := service.GenerateInvoice(actorCtx, "tenant-integration", subscription.ID, time.Time{}, time.Time{}, "invoice-integration-key")
+			replayed, replayedDuplicate, err := service.GenerateInvoice(actorCtx, "tenant-integration", "app-integration", subscription.ID, time.Time{}, time.Time{}, "invoice-integration-key")
 			if err != nil || !replayedDuplicate || replayed.Invoice.ID != invoice.Invoice.ID {
 				t.Fatalf("replay invoice=%s duplicate=%v err=%v", replayed.Invoice.ID, replayedDuplicate, err)
 			}
@@ -108,9 +111,13 @@ func TestRepositoryAndMigrations(t *testing.T) {
 
 type zeroUsage struct{}
 
-func (zeroUsage) Total(context.Context, string, string, time.Time, time.Time) (int64, error) {
+func (zeroUsage) Total(context.Context, string, string, string, time.Time, time.Time) (int64, error) {
 	return 0, nil
 }
+
+type allowApplicationVerifier struct{}
+
+func (allowApplicationVerifier) Verify(context.Context, string, string) error { return nil }
 
 func startDatabase(t *testing.T, ctx context.Context, databaseType string) (string, string) {
 	t.Helper()

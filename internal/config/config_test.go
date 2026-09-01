@@ -139,3 +139,17 @@ func TestConfigRejectsOutboxRetentionShorterThanReplayWindow(t *testing.T) {
 		t.Fatal("Validate() error = nil, want outbox retention validation error")
 	}
 }
+
+func TestConfigRequiresApplicationUpstreamWhenDatabaseEnabled(t *testing.T) {
+	t.Parallel()
+	cfg, err := LoadWithProfile("../../config/config.yaml", "development")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.Database.Enabled = true
+	cfg.Database.DSN = "postgres://app:app@127.0.0.1/app?sslmode=disable"
+	delete(cfg.Outbound.GRPC, "application")
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("Validate() error = nil, want application upstream validation error")
+	}
+}

@@ -26,19 +26,19 @@ type Repository interface {
 	ListUsagePrices(context.Context, string) ([]UsagePrice, error)
 	CreateSubscription(context.Context, sqlx.ExtContext, Subscription) error
 	UpdateSubscription(context.Context, sqlx.ExtContext, Subscription, int64) error
-	GetSubscription(context.Context, string, string) (Subscription, error)
-	ListSubscriptions(context.Context, string, string, int, int) ([]Subscription, int64, error)
-	ClaimSubscription(context.Context, sqlx.ExtContext, string, string, Audit) error
-	ReleaseSubscriptionClaim(context.Context, sqlx.ExtContext, string, string) error
+	GetSubscription(context.Context, string, string, string) (Subscription, error)
+	ListSubscriptions(context.Context, string, string, string, int, int) ([]Subscription, int64, error)
+	ClaimSubscription(context.Context, sqlx.ExtContext, string, string, string, Audit) error
+	ReleaseSubscriptionClaim(context.Context, sqlx.ExtContext, string, string, string) error
 	ListDueSubscriptions(context.Context, time.Time, int) ([]Subscription, error)
-	ClaimInvoice(context.Context, sqlx.ExtContext, string, string, string, string, Audit) (string, bool, error)
+	ClaimInvoice(context.Context, sqlx.ExtContext, string, string, string, string, string, Audit) (string, bool, error)
 	CreateInvoice(context.Context, sqlx.ExtContext, Invoice, []InvoiceLine) error
 	UpdateInvoice(context.Context, sqlx.ExtContext, Invoice, int64) error
-	GetInvoice(context.Context, string, string) (Invoice, []InvoiceLine, error)
-	ListInvoices(context.Context, string, string, time.Time, time.Time, int, int) ([]Invoice, int64, error)
+	GetInvoice(context.Context, string, string, string) (Invoice, []InvoiceLine, error)
+	ListInvoices(context.Context, string, string, string, time.Time, time.Time, int, int) ([]Invoice, int64, error)
 	ClaimPayment(context.Context, sqlx.ExtContext, PaymentAttempt) (string, bool, error)
 	GetPaymentByKey(context.Context, string) (PaymentAttempt, error)
-	GetPayment(context.Context, string, string) (PaymentAttempt, error)
+	GetPayment(context.Context, string, string, string) (PaymentAttempt, error)
 	UpdatePayment(context.Context, sqlx.ExtContext, PaymentAttempt, int64) error
 	ClaimProviderEvent(context.Context, sqlx.ExtContext, string, string, string, Audit) (bool, error)
 	ClaimRefund(context.Context, sqlx.ExtContext, Refund) (string, bool, error)
@@ -63,11 +63,11 @@ func NewRepository(db *sqlx.DB) Repository { return &SQLRepository{db: db} }
 
 const planColumns = "id,code,name,description,currency,billing_interval,base_amount_minor,trial_days,status,entitlements_json,version,created_at,updated_at,created_by,updated_by"
 const usagePriceColumns = "id,plan_id,meter_code,included_quantity,unit_quantity,unit_amount_minor,pricing_model,tiers_json,version,created_at,updated_at,created_by,updated_by"
-const subscriptionColumns = "id,tenant_id,plan_id,status,current_period_start,current_period_end,cancel_at_period_end,canceled_at,external_reference,pending_plan_id,pending_change_at,version,created_at,updated_at,created_by,updated_by"
-const invoiceColumns = "id,number,tenant_id,subscription_id,currency,status,period_start,period_end,subtotal_minor,discount_minor,tax_minor,total_minor,paid_minor,refunded_minor,due_at,finalized_at,paid_at,version,created_at,updated_at,created_by,updated_by"
+const subscriptionColumns = "id,tenant_id,application_id,plan_id,status,current_period_start,current_period_end,cancel_at_period_end,canceled_at,external_reference,pending_plan_id,pending_change_at,version,created_at,updated_at,created_by,updated_by"
+const invoiceColumns = "id,number,tenant_id,application_id,subscription_id,currency,status,period_start,period_end,subtotal_minor,discount_minor,tax_minor,total_minor,paid_minor,refunded_minor,due_at,finalized_at,paid_at,version,created_at,updated_at,created_by,updated_by"
 const invoiceLineColumns = "id,invoice_id,type,description,meter_code,quantity,unit_quantity,unit_amount_minor,amount_minor,metadata_json,version,created_at,updated_at,created_by,updated_by"
-const paymentColumns = "id,invoice_id,tenant_id,provider,provider_payment_id,idempotency_key,request_hash,currency,amount_minor,status,failure_code,failure_message,processed_at,version,created_at,updated_at,created_by,updated_by"
-const refundColumns = "id,payment_attempt_id,invoice_id,provider_refund_id,idempotency_key,request_hash,amount_minor,reason,status,version,created_at,updated_at,created_by,updated_by"
+const paymentColumns = "id,invoice_id,tenant_id,application_id,provider,provider_payment_id,idempotency_key,request_hash,currency,amount_minor,status,failure_code,failure_message,processed_at,version,created_at,updated_at,created_by,updated_by"
+const refundColumns = "id,payment_attempt_id,invoice_id,tenant_id,application_id,provider_refund_id,idempotency_key,request_hash,amount_minor,reason,status,version,created_at,updated_at,created_by,updated_by"
 
 func (r *SQLRepository) CreatePlan(ctx context.Context, e sqlx.ExtContext, v Plan) error {
 	_, err := e.ExecContext(ctx, r.db.Rebind("INSERT INTO plans ("+planColumns+") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"), v.ID, v.Code, v.Name, v.Description, v.Currency, v.BillingInterval, v.BaseAmountMinor, v.TrialDays, v.Status, v.EntitlementsJSON, v.Version, v.CreatedAt, v.UpdatedAt, v.CreatedBy, v.UpdatedBy)
@@ -124,20 +124,20 @@ func (r *SQLRepository) ListUsagePrices(ctx context.Context, planID string) ([]U
 	return items, err
 }
 func (r *SQLRepository) CreateSubscription(ctx context.Context, e sqlx.ExtContext, v Subscription) error {
-	_, err := e.ExecContext(ctx, r.db.Rebind("INSERT INTO subscriptions ("+subscriptionColumns+") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"), v.ID, v.TenantID, v.PlanID, v.Status, v.CurrentPeriodStart, v.CurrentPeriodEnd, v.CancelAtPeriodEnd, v.CanceledAt, v.ExternalReference, v.PendingPlanID, v.PendingChangeAt, v.Version, v.CreatedAt, v.UpdatedAt, v.CreatedBy, v.UpdatedBy)
+	_, err := e.ExecContext(ctx, r.db.Rebind("INSERT INTO subscriptions ("+subscriptionColumns+") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"), v.ID, v.TenantID, v.ApplicationID, v.PlanID, v.Status, v.CurrentPeriodStart, v.CurrentPeriodEnd, v.CancelAtPeriodEnd, v.CanceledAt, v.ExternalReference, v.PendingPlanID, v.PendingChangeAt, v.Version, v.CreatedAt, v.UpdatedAt, v.CreatedBy, v.UpdatedBy)
 	return err
 }
 func (r *SQLRepository) UpdateSubscription(ctx context.Context, e sqlx.ExtContext, v Subscription, expected int64) error {
 	result, err := e.ExecContext(ctx, r.db.Rebind("UPDATE subscriptions SET plan_id=?,status=?,current_period_start=?,current_period_end=?,cancel_at_period_end=?,canceled_at=?,pending_plan_id=?,pending_change_at=?,version=version+1,updated_at=?,updated_by=? WHERE id=? AND version=?"), v.PlanID, v.Status, v.CurrentPeriodStart, v.CurrentPeriodEnd, v.CancelAtPeriodEnd, v.CanceledAt, v.PendingPlanID, v.PendingChangeAt, v.UpdatedAt, v.UpdatedBy, v.ID, expected)
 	return optimistic(result, err)
 }
-func (r *SQLRepository) GetSubscription(ctx context.Context, tenantID, id string) (Subscription, error) {
+func (r *SQLRepository) GetSubscription(ctx context.Context, tenantID, applicationID, id string) (Subscription, error) {
 	var v Subscription
-	err := r.db.GetContext(ctx, &v, r.db.Rebind("SELECT "+subscriptionColumns+" FROM subscriptions WHERE tenant_id=? AND id=?"), tenantID, id)
+	err := r.db.GetContext(ctx, &v, r.db.Rebind("SELECT "+subscriptionColumns+" FROM subscriptions WHERE tenant_id=? AND application_id=? AND id=?"), tenantID, applicationID, id)
 	return v, notFound(err)
 }
-func (r *SQLRepository) ListSubscriptions(ctx context.Context, tenantID, status string, limit, offset int) ([]Subscription, int64, error) {
-	where, args := "tenant_id=?", []any{tenantID}
+func (r *SQLRepository) ListSubscriptions(ctx context.Context, tenantID, applicationID, status string, limit, offset int) ([]Subscription, int64, error) {
+	where, args := "tenant_id=? AND application_id=?", []any{tenantID, applicationID}
 	if status != "" {
 		where += " AND status=?"
 		args = append(args, status)
@@ -151,15 +151,15 @@ func (r *SQLRepository) ListSubscriptions(ctx context.Context, tenantID, status 
 	err := r.db.SelectContext(ctx, &items, r.db.Rebind("SELECT "+subscriptionColumns+" FROM subscriptions WHERE "+where+" ORDER BY created_at DESC,id LIMIT ? OFFSET ?"), pageArgs...)
 	return items, total, err
 }
-func (r *SQLRepository) ClaimSubscription(ctx context.Context, e sqlx.ExtContext, tenantID, subscriptionID string, a Audit) error {
-	_, err := e.ExecContext(ctx, r.db.Rebind("INSERT INTO subscription_claims (tenant_id,subscription_id,version,created_at,updated_at,created_by,updated_by) VALUES (?,?,1,?,?,?,?)"), tenantID, subscriptionID, a.CreatedAt, a.UpdatedAt, a.CreatedBy, a.UpdatedBy)
+func (r *SQLRepository) ClaimSubscription(ctx context.Context, e sqlx.ExtContext, tenantID, applicationID, subscriptionID string, a Audit) error {
+	_, err := e.ExecContext(ctx, r.db.Rebind("INSERT INTO subscription_claims (tenant_id,application_id,subscription_id,version,created_at,updated_at,created_by,updated_by) VALUES (?,?,?,1,?,?,?,?)"), tenantID, applicationID, subscriptionID, a.CreatedAt, a.UpdatedAt, a.CreatedBy, a.UpdatedBy)
 	if err != nil {
 		return ErrConflict
 	}
 	return nil
 }
-func (r *SQLRepository) ReleaseSubscriptionClaim(ctx context.Context, e sqlx.ExtContext, tenantID, subscriptionID string) error {
-	_, err := e.ExecContext(ctx, r.db.Rebind("DELETE FROM subscription_claims WHERE tenant_id=? AND subscription_id=?"), tenantID, subscriptionID)
+func (r *SQLRepository) ReleaseSubscriptionClaim(ctx context.Context, e sqlx.ExtContext, tenantID, applicationID, subscriptionID string) error {
+	_, err := e.ExecContext(ctx, r.db.Rebind("DELETE FROM subscription_claims WHERE tenant_id=? AND application_id=? AND subscription_id=?"), tenantID, applicationID, subscriptionID)
 	return err
 }
 func (r *SQLRepository) ListDueSubscriptions(ctx context.Context, now time.Time, limit int) ([]Subscription, error) {
@@ -167,12 +167,12 @@ func (r *SQLRepository) ListDueSubscriptions(ctx context.Context, now time.Time,
 	err := r.db.SelectContext(ctx, &items, r.db.Rebind("SELECT "+subscriptionColumns+" FROM subscriptions WHERE (pending_change_at IS NOT NULL AND pending_change_at<=?) OR (cancel_at_period_end=? AND current_period_end<=?) ORDER BY current_period_end,id LIMIT ?"), now, true, now, limit)
 	return items, err
 }
-func (r *SQLRepository) ClaimInvoice(ctx context.Context, e sqlx.ExtContext, key, invoiceID, tenantID, requestHash string, a Audit) (string, bool, error) {
-	query := "INSERT INTO invoice_generation_keys (idempotency_key,invoice_id,tenant_id,request_hash,version,created_at,updated_at,created_by,updated_by) VALUES (?,?,?,?,1,?,?,?,?) ON CONFLICT (idempotency_key) DO NOTHING"
+func (r *SQLRepository) ClaimInvoice(ctx context.Context, e sqlx.ExtContext, key, invoiceID, tenantID, applicationID, requestHash string, a Audit) (string, bool, error) {
+	query := "INSERT INTO invoice_generation_keys (idempotency_key,invoice_id,tenant_id,application_id,request_hash,version,created_at,updated_at,created_by,updated_by) VALUES (?,?,?,?,?,1,?,?,?,?) ON CONFLICT (idempotency_key) DO NOTHING"
 	if r.db.DriverName() == "mysql" {
-		query = "INSERT IGNORE INTO invoice_generation_keys (idempotency_key,invoice_id,tenant_id,request_hash,version,created_at,updated_at,created_by,updated_by) VALUES (?,?,?,?,1,?,?,?,?)"
+		query = "INSERT IGNORE INTO invoice_generation_keys (idempotency_key,invoice_id,tenant_id,application_id,request_hash,version,created_at,updated_at,created_by,updated_by) VALUES (?,?,?,?,?,1,?,?,?,?)"
 	}
-	result, err := e.ExecContext(ctx, r.db.Rebind(query), key, invoiceID, tenantID, requestHash, a.CreatedAt, a.UpdatedAt, a.CreatedBy, a.UpdatedBy)
+	result, err := e.ExecContext(ctx, r.db.Rebind(query), key, invoiceID, tenantID, applicationID, requestHash, a.CreatedAt, a.UpdatedAt, a.CreatedBy, a.UpdatedBy)
 	if err != nil {
 		return "", false, err
 	}
@@ -194,7 +194,7 @@ func (r *SQLRepository) ClaimInvoice(ctx context.Context, e sqlx.ExtContext, key
 	return existingID, false, nil
 }
 func (r *SQLRepository) CreateInvoice(ctx context.Context, e sqlx.ExtContext, v Invoice, lines []InvoiceLine) error {
-	_, err := e.ExecContext(ctx, r.db.Rebind("INSERT INTO invoices ("+invoiceColumns+") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"), v.ID, v.Number, v.TenantID, v.SubscriptionID, v.Currency, v.Status, v.PeriodStart, v.PeriodEnd, v.SubtotalMinor, v.DiscountMinor, v.TaxMinor, v.TotalMinor, v.PaidMinor, v.RefundedMinor, v.DueAt, v.FinalizedAt, v.PaidAt, v.Version, v.CreatedAt, v.UpdatedAt, v.CreatedBy, v.UpdatedBy)
+	_, err := e.ExecContext(ctx, r.db.Rebind("INSERT INTO invoices ("+invoiceColumns+") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"), v.ID, v.Number, v.TenantID, v.ApplicationID, v.SubscriptionID, v.Currency, v.Status, v.PeriodStart, v.PeriodEnd, v.SubtotalMinor, v.DiscountMinor, v.TaxMinor, v.TotalMinor, v.PaidMinor, v.RefundedMinor, v.DueAt, v.FinalizedAt, v.PaidAt, v.Version, v.CreatedAt, v.UpdatedAt, v.CreatedBy, v.UpdatedBy)
 	if err != nil {
 		return err
 	}
@@ -210,9 +210,9 @@ func (r *SQLRepository) UpdateInvoice(ctx context.Context, e sqlx.ExtContext, v 
 	result, err := e.ExecContext(ctx, r.db.Rebind("UPDATE invoices SET status=?,paid_minor=?,refunded_minor=?,due_at=?,finalized_at=?,paid_at=?,version=version+1,updated_at=?,updated_by=? WHERE id=? AND version=?"), v.Status, v.PaidMinor, v.RefundedMinor, v.DueAt, v.FinalizedAt, v.PaidAt, v.UpdatedAt, v.UpdatedBy, v.ID, expected)
 	return optimistic(result, err)
 }
-func (r *SQLRepository) GetInvoice(ctx context.Context, tenantID, id string) (Invoice, []InvoiceLine, error) {
+func (r *SQLRepository) GetInvoice(ctx context.Context, tenantID, applicationID, id string) (Invoice, []InvoiceLine, error) {
 	var v Invoice
-	err := r.db.GetContext(ctx, &v, r.db.Rebind("SELECT "+invoiceColumns+" FROM invoices WHERE tenant_id=? AND id=?"), tenantID, id)
+	err := r.db.GetContext(ctx, &v, r.db.Rebind("SELECT "+invoiceColumns+" FROM invoices WHERE tenant_id=? AND application_id=? AND id=?"), tenantID, applicationID, id)
 	if err != nil {
 		return Invoice{}, nil, notFound(err)
 	}
@@ -220,8 +220,8 @@ func (r *SQLRepository) GetInvoice(ctx context.Context, tenantID, id string) (In
 	err = r.db.SelectContext(ctx, &lines, r.db.Rebind("SELECT "+invoiceLineColumns+" FROM invoice_lines WHERE invoice_id=? ORDER BY id"), id)
 	return v, lines, err
 }
-func (r *SQLRepository) ListInvoices(ctx context.Context, tenantID, status string, from, to time.Time, limit, offset int) ([]Invoice, int64, error) {
-	where, args := "tenant_id=?", []any{tenantID}
+func (r *SQLRepository) ListInvoices(ctx context.Context, tenantID, applicationID, status string, from, to time.Time, limit, offset int) ([]Invoice, int64, error) {
+	where, args := "tenant_id=? AND application_id=?", []any{tenantID, applicationID}
 	if status != "" {
 		where += " AND status=?"
 		args = append(args, status)
@@ -244,11 +244,11 @@ func (r *SQLRepository) ListInvoices(ctx context.Context, tenantID, status strin
 	return items, total, err
 }
 func (r *SQLRepository) ClaimPayment(ctx context.Context, e sqlx.ExtContext, v PaymentAttempt) (string, bool, error) {
-	query := "INSERT INTO payment_attempts (" + paymentColumns + ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT (idempotency_key) DO NOTHING"
+	query := "INSERT INTO payment_attempts (" + paymentColumns + ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT (idempotency_key) DO NOTHING"
 	if r.db.DriverName() == "mysql" {
-		query = "INSERT IGNORE INTO payment_attempts (" + paymentColumns + ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+		query = "INSERT IGNORE INTO payment_attempts (" + paymentColumns + ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
 	}
-	result, err := e.ExecContext(ctx, r.db.Rebind(query), v.ID, v.InvoiceID, v.TenantID, v.Provider, v.ProviderPaymentID, v.IdempotencyKey, v.RequestHash, v.Currency, v.AmountMinor, v.Status, v.FailureCode, v.FailureMessage, v.ProcessedAt, v.Version, v.CreatedAt, v.UpdatedAt, v.CreatedBy, v.UpdatedBy)
+	result, err := e.ExecContext(ctx, r.db.Rebind(query), v.ID, v.InvoiceID, v.TenantID, v.ApplicationID, v.Provider, v.ProviderPaymentID, v.IdempotencyKey, v.RequestHash, v.Currency, v.AmountMinor, v.Status, v.FailureCode, v.FailureMessage, v.ProcessedAt, v.Version, v.CreatedAt, v.UpdatedAt, v.CreatedBy, v.UpdatedBy)
 	if err != nil {
 		return "", false, err
 	}
@@ -268,10 +268,10 @@ func (r *SQLRepository) ClaimPayment(ctx context.Context, e sqlx.ExtContext, v P
 	}
 	return existingID, false, nil
 }
-func (r *SQLRepository) GetPayment(ctx context.Context, tenantID, id string) (PaymentAttempt, error) {
+func (r *SQLRepository) GetPayment(ctx context.Context, tenantID, applicationID, id string) (PaymentAttempt, error) {
 	query, args := "SELECT "+paymentColumns+" FROM payment_attempts WHERE id=?", []any{id}
 	if tenantID != "" {
-		query, args = "SELECT "+paymentColumns+" FROM payment_attempts WHERE tenant_id=? AND id=?", []any{tenantID, id}
+		query, args = "SELECT "+paymentColumns+" FROM payment_attempts WHERE tenant_id=? AND application_id=? AND id=?", []any{tenantID, applicationID, id}
 	}
 	var v PaymentAttempt
 	err := r.db.GetContext(ctx, &v, r.db.Rebind(query), args...)
@@ -299,11 +299,11 @@ func (r *SQLRepository) ClaimProviderEvent(ctx context.Context, e sqlx.ExtContex
 	return rows == 1, err
 }
 func (r *SQLRepository) ClaimRefund(ctx context.Context, e sqlx.ExtContext, v Refund) (string, bool, error) {
-	query := "INSERT INTO refunds (" + refundColumns + ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT (idempotency_key) DO NOTHING"
+	query := "INSERT INTO refunds (" + refundColumns + ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT (idempotency_key) DO NOTHING"
 	if r.db.DriverName() == "mysql" {
-		query = "INSERT IGNORE INTO refunds (" + refundColumns + ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+		query = "INSERT IGNORE INTO refunds (" + refundColumns + ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
 	}
-	result, err := e.ExecContext(ctx, r.db.Rebind(query), v.ID, v.PaymentAttemptID, v.InvoiceID, v.ProviderRefundID, v.IdempotencyKey, v.RequestHash, v.AmountMinor, v.Reason, v.Status, v.Version, v.CreatedAt, v.UpdatedAt, v.CreatedBy, v.UpdatedBy)
+	result, err := e.ExecContext(ctx, r.db.Rebind(query), v.ID, v.PaymentAttemptID, v.InvoiceID, v.TenantID, v.ApplicationID, v.ProviderRefundID, v.IdempotencyKey, v.RequestHash, v.AmountMinor, v.Reason, v.Status, v.Version, v.CreatedAt, v.UpdatedAt, v.CreatedBy, v.UpdatedBy)
 	if err != nil {
 		return "", false, err
 	}

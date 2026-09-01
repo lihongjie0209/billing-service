@@ -45,7 +45,15 @@ jobs:
       - name: Verify generated Swagger
         run: go run github.com/swaggo/swag/cmd/swag@v1.16.6 init -g cmd/api/main.go -o docs --parseInternal && git diff --exit-code -- docs
       - name: Verify central contract dependency
-        run: go list -m github.com/lihongjie0209/platform-protos | grep -F 'v0.26.0'
+        run: |
+          contract_version="$(go list -m -f '{{.Version}}' github.com/lihongjie0209/platform-protos)"
+          case "$contract_version" in
+            v[0-9]*.[0-9]*.[0-9]*) ;;
+            *) echo "platform-protos must use a released semantic version, got $contract_version" >&2; exit 1 ;;
+          esac
+          test "$(go list -m -f '{{if .Replace}}{{.Replace.Path}}{{end}}' github.com/lihongjie0209/platform-protos)" = ""
+          test ! -d proto
+          test ! -d gen
       - name: Validate Kubernetes manifests
         run: go run github.com/yannh/kubeconform/cmd/kubeconform@v0.7.0 -strict -summary deployments/*.yaml
 

@@ -63,6 +63,8 @@ definitions:
     type: object
   httptransport.cancelSubscriptionRequest:
     properties:
+      application_id:
+        type: string
       at_period_end:
         type: boolean
       id:
@@ -71,9 +73,13 @@ definitions:
         type: string
       version:
         type: integer
+    required:
+    - application_id
     type: object
   httptransport.changeSubscriptionRequest:
     properties:
+      application_id:
+        type: string
       effective_mode:
         type: string
       id:
@@ -84,9 +90,13 @@ definitions:
         type: string
       version:
         type: integer
+    required:
+    - application_id
     type: object
   httptransport.createPaymentRequest:
     properties:
+      application_id:
+        type: string
       idempotency_key:
         type: string
       invoice_id:
@@ -97,6 +107,8 @@ definitions:
         type: string
       tenant_id:
         type: string
+    required:
+    - application_id
     type: object
   httptransport.createPlanRequest:
     properties:
@@ -119,6 +131,8 @@ definitions:
     type: object
   httptransport.createSubscriptionRequest:
     properties:
+      application_id:
+        type: string
       external_reference:
         type: string
       plan_id:
@@ -127,9 +141,13 @@ definitions:
         type: string
       tenant_id:
         type: string
+    required:
+    - application_id
     type: object
   httptransport.finalizeInvoiceRequest:
     properties:
+      application_id:
+        type: string
       due_at:
         type: string
       id:
@@ -138,6 +156,8 @@ definitions:
         type: string
       version:
         type: integer
+    required:
+    - application_id
     type: object
   httptransport.getPlanRequest:
     properties:
@@ -148,10 +168,14 @@ definitions:
     type: object
   httptransport.getSubscriptionRequest:
     properties:
+      application_id:
+        type: string
       id:
         type: string
       tenant_id:
         type: string
+    required:
+    - application_id
     type: object
   httptransport.idVersionRequest:
     properties:
@@ -164,6 +188,8 @@ definitions:
     type: object
   httptransport.invoicePeriodRequest:
     properties:
+      application_id:
+        type: string
       idempotency_key:
         type: string
       period_end:
@@ -174,9 +200,13 @@ definitions:
         type: string
       tenant_id:
         type: string
+    required:
+    - application_id
     type: object
   httptransport.listInvoicesRequest:
     properties:
+      application_id:
+        type: string
       created_from:
         type: string
       created_to:
@@ -189,6 +219,8 @@ definitions:
         type: string
       tenant_id:
         type: string
+    required:
+    - application_id
     type: object
   httptransport.listPlansRequest:
     properties:
@@ -203,6 +235,8 @@ definitions:
     type: object
   httptransport.listSubscriptionsRequest:
     properties:
+      application_id:
+        type: string
       page:
         type: integer
       page_size:
@@ -211,11 +245,15 @@ definitions:
         type: string
       tenant_id:
         type: string
+    required:
+    - application_id
     type: object
   httptransport.recordRefundRequest:
     properties:
       amount_minor:
         type: integer
+      application_id:
+        type: string
       idempotency_key:
         type: string
       payment_attempt_id:
@@ -228,6 +266,8 @@ definitions:
         type: string
       tenant_id:
         type: string
+    required:
+    - application_id
     type: object
   httptransport.updatePlanRequest:
     properties:
@@ -273,6 +313,8 @@ definitions:
     type: object
   httptransport.voidInvoiceRequest:
     properties:
+      application_id:
+        type: string
       id:
         type: string
       reason:
@@ -281,6 +323,8 @@ definitions:
         type: string
       version:
         type: integer
+    required:
+    - application_id
     type: object
 info:
   contact: {}

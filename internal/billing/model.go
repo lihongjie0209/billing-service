@@ -39,6 +39,7 @@ type UsagePrice struct {
 type Subscription struct {
 	ID                 string     `db:"id" json:"id"`
 	TenantID           string     `db:"tenant_id" json:"tenant_id"`
+	ApplicationID      string     `db:"application_id" json:"application_id"`
 	PlanID             string     `db:"plan_id" json:"plan_id"`
 	Status             string     `db:"status" json:"status"`
 	CurrentPeriodStart time.Time  `db:"current_period_start" json:"current_period_start"`
@@ -55,6 +56,7 @@ type Invoice struct {
 	ID             string     `db:"id" json:"id"`
 	Number         string     `db:"number" json:"number"`
 	TenantID       string     `db:"tenant_id" json:"tenant_id"`
+	ApplicationID  string     `db:"application_id" json:"application_id"`
 	SubscriptionID string     `db:"subscription_id" json:"subscription_id"`
 	Currency       string     `db:"currency" json:"currency"`
 	Status         string     `db:"status" json:"status"`
@@ -90,6 +92,7 @@ type PaymentAttempt struct {
 	ID                string     `db:"id" json:"id"`
 	InvoiceID         string     `db:"invoice_id" json:"invoice_id"`
 	TenantID          string     `db:"tenant_id" json:"tenant_id"`
+	ApplicationID     string     `db:"application_id" json:"application_id"`
 	Provider          string     `db:"provider" json:"provider"`
 	ProviderPaymentID string     `db:"provider_payment_id" json:"provider_payment_id"`
 	IdempotencyKey    string     `db:"idempotency_key" json:"idempotency_key"`
@@ -107,6 +110,8 @@ type Refund struct {
 	ID               string `db:"id" json:"id"`
 	PaymentAttemptID string `db:"payment_attempt_id" json:"payment_attempt_id"`
 	InvoiceID        string `db:"invoice_id" json:"invoice_id"`
+	TenantID         string `db:"tenant_id" json:"tenant_id"`
+	ApplicationID    string `db:"application_id" json:"application_id"`
 	ProviderRefundID string `db:"provider_refund_id" json:"provider_refund_id"`
 	IdempotencyKey   string `db:"idempotency_key" json:"idempotency_key"`
 	RequestHash      string `db:"request_hash" json:"-"`

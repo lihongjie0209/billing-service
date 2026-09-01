@@ -1,0 +1,15 @@
+ALTER TABLE subscription_claims DROP CONSTRAINT subscription_claims_pkey;
+ALTER TABLE subscription_claims ADD PRIMARY KEY(tenant_id);
+ALTER TABLE refunds DROP CONSTRAINT chk_refunds_scope_nonempty;
+ALTER TABLE payment_attempts DROP CONSTRAINT chk_payments_application_id_nonempty;
+ALTER TABLE invoice_generation_keys DROP CONSTRAINT chk_invoice_keys_application_id_nonempty;
+ALTER TABLE invoices DROP CONSTRAINT chk_invoices_application_id_nonempty;
+ALTER TABLE subscription_claims DROP CONSTRAINT chk_subscription_claims_application_id_nonempty;
+ALTER TABLE subscriptions DROP CONSTRAINT chk_subscriptions_application_id_nonempty;
+ALTER TABLE refunds ALTER COLUMN application_id DROP NOT NULL;
+ALTER TABLE refunds ALTER COLUMN tenant_id DROP NOT NULL;
+ALTER TABLE payment_attempts ALTER COLUMN application_id DROP NOT NULL;
+ALTER TABLE invoice_generation_keys ALTER COLUMN application_id DROP NOT NULL;
+ALTER TABLE invoices ALTER COLUMN application_id DROP NOT NULL;
+ALTER TABLE subscription_claims ALTER COLUMN application_id DROP NOT NULL;
+ALTER TABLE subscriptions ALTER COLUMN application_id DROP NOT NULL;

@@ -16,6 +16,7 @@ import (
 type PaymentCommand struct {
 	AttemptID              string `json:"attempt_id"`
 	TenantID               string `json:"tenant_id"`
+	ApplicationID          string `json:"application_id"`
 	InvoiceID              string `json:"invoice_id"`
 	Provider               string `json:"provider"`
 	PaymentMethodReference string `json:"payment_method_reference"`

@@ -8,8 +8,28 @@ import (
 	"time"
 
 	"github.com/jmoiron/sqlx"
+	"github.com/lihongjie0209/microservice-platform-go/appaccess"
 	platformprincipal "github.com/lihongjie0209/microservice-platform-go/principal"
+	commonv1 "github.com/lihongjie0209/platform-protos/gen/go/platform/common/v1"
+	"google.golang.org/protobuf/proto"
 )
+
+type allowApplicationVerifier struct{}
+
+func (allowApplicationVerifier) Verify(context.Context, string, string) error { return nil }
+
+type rejectingApplicationVerifier struct{ err error }
+
+func (v rejectingApplicationVerifier) Verify(context.Context, string, string) error { return v.err }
+
+func newTestService(t *testing.T, repository Repository, usage UsageReader) *Service {
+	t.Helper()
+	service, err := NewService(repository, nil, usage, allowApplicationVerifier{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return service
+}
 
 type previewRepository struct {
 	Repository
@@ -39,6 +59,47 @@ type planImportRepository struct {
 	creates int
 }
 
+type subscriptionRepository struct {
+	Repository
+	outbox OutboxEvent
+}
+
+func (*subscriptionRepository) GetPlan(context.Context, string, string) (Plan, error) {
+	return Plan{ID: "plan-1", Status: "active", BillingInterval: "month"}, nil
+}
+func (*subscriptionRepository) ClaimSubscription(context.Context, sqlx.ExtContext, string, string, string, Audit) error {
+	return nil
+}
+func (*subscriptionRepository) CreateSubscription(context.Context, sqlx.ExtContext, Subscription) error {
+	return nil
+}
+func (r *subscriptionRepository) AddOutbox(_ context.Context, _ sqlx.ExtContext, event OutboxEvent) error {
+	r.outbox = event
+	return nil
+}
+
+func TestCreateSubscriptionPublishesApplicationScopedEvent(t *testing.T) {
+	t.Parallel()
+	repository := &subscriptionRepository{}
+	service := newTestService(t, repository, nil)
+	service.transactor = transactionStub{}
+	service.now = func() time.Time {
+		return time.Date(2026, time.September, 1, 8, 0, 0, 0, time.FixedZone("UTC+8", 8*60*60))
+	}
+	ctx := platformprincipal.WithContext(t.Context(), platformprincipal.Principal{ID: "user-1", Type: platformprincipal.TypeUser, TenantID: "tenant-1"})
+	subscription, err := service.CreateSubscription(ctx, "tenant-1", "app-1", "plan-1", time.Time{}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	envelope := &commonv1.EventEnvelope{}
+	if err := proto.Unmarshal(repository.outbox.Envelope, envelope); err != nil {
+		t.Fatal(err)
+	}
+	if subscription.ApplicationID != "app-1" || envelope.GetTenantId() != "tenant-1" || envelope.GetApplicationId() != "app-1" {
+		t.Fatalf("subscription=%+v envelope scope=%s/%s", subscription, envelope.GetTenantId(), envelope.GetApplicationId())
+	}
+}
+
 func (r *planImportRepository) GetPlan(_ context.Context, _, code string) (Plan, error) {
 	if r.plan != nil && r.plan.Code == code {
 		return *r.plan, nil
@@ -54,7 +115,7 @@ func (*planImportRepository) AddOutbox(context.Context, sqlx.ExtContext, OutboxE
 	return nil
 }
 
-func (r *paymentRepository) GetPayment(context.Context, string, string) (PaymentAttempt, error) {
+func (r *paymentRepository) GetPayment(context.Context, string, string, string) (PaymentAttempt, error) {
 	return r.payment, nil
 }
 func (r *paymentRepository) GetPaymentByKey(_ context.Context, key string) (PaymentAttempt, error) {
@@ -67,7 +128,7 @@ func (r *paymentRepository) ClaimPayment(_ context.Context, _ sqlx.ExtContext, v
 	r.payment = v
 	return v.ID, true, nil
 }
-func (r *paymentRepository) GetInvoice(context.Context, string, string) (Invoice, []InvoiceLine, error) {
+func (r *paymentRepository) GetInvoice(context.Context, string, string, string) (Invoice, []InvoiceLine, error) {
 	return r.invoice, nil, nil
 }
 func (r *paymentRepository) ClaimProviderEvent(context.Context, sqlx.ExtContext, string, string, string, Audit) (bool, error) {
@@ -99,12 +160,12 @@ func (*paymentGatewayStub) Reconcile(context.Context, string, time.Time, time.Ti
 func TestCreatePaymentAttemptCallsGatewayAfterClaim(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, time.August, 31, 10, 0, 0, 0, time.FixedZone("UTC+8", 8*60*60))
-	repository := &paymentRepository{claim: true, invoice: Invoice{ID: "invoice-1", TenantID: "tenant-1", Currency: "CNY", TotalMinor: 900, Status: "open", Audit: Audit{Version: 1}}}
+	repository := &paymentRepository{claim: true, invoice: Invoice{ID: "invoice-1", TenantID: "tenant-1", ApplicationID: "app-1", Currency: "CNY", TotalMinor: 900, Status: "open", Audit: Audit{Version: 1}}}
 	gateway := &paymentGatewayStub{result: PaymentGatewayResult{ProviderPaymentID: "provider-payment-1", ProviderEventID: "provider-event-1", Status: "succeeded", ProcessedAt: now}}
-	service := NewService(repository, nil, nil)
+	service := newTestService(t, repository, nil)
 	service.transactor, service.gateway, service.now = transactionStub{}, gateway, func() time.Time { return now }
 	ctx := platformprincipal.WithContext(t.Context(), platformprincipal.Principal{ID: "user-1", Type: platformprincipal.TypeUser, TenantID: "tenant-1"})
-	payment, duplicate, err := service.CreatePaymentAttempt(ctx, "tenant-1", "invoice-1", "demo", "payment-method-secret", "payment-key")
+	payment, duplicate, err := service.CreatePaymentAttempt(ctx, "tenant-1", "app-1", "invoice-1", "demo", "payment-method-secret", "payment-key")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -116,7 +177,7 @@ func TestCreatePaymentAttemptCallsGatewayAfterClaim(t *testing.T) {
 func TestImportPlanUsesCodeAsReplayBoundary(t *testing.T) {
 	t.Parallel()
 	repository := &planImportRepository{}
-	service := NewService(repository, nil, nil)
+	service := newTestService(t, repository, nil)
 	service.transactor = transactionStub{}
 	ctx := platformprincipal.WithContext(t.Context(), platformprincipal.Principal{ID: "import-service", Type: platformprincipal.TypeServiceAccount})
 	input := Plan{Code: " pro-monthly ", Name: " Pro ", Currency: "cny", BillingInterval: "MONTH", BaseAmountMinor: 9900, EntitlementsJSON: `{ "seats": 10, "features": ["reports"] }`}
@@ -135,10 +196,10 @@ func TestImportPlanUsesCodeAsReplayBoundary(t *testing.T) {
 
 func TestCreatePaymentAttemptReplaysCompletedResultAfterInvoicePaid(t *testing.T) {
 	t.Parallel()
-	repository := &paymentRepository{payment: PaymentAttempt{ID: "payment-1", InvoiceID: "invoice-1", TenantID: "tenant-1", Provider: "demo", IdempotencyKey: "payment-key", RequestHash: hashParts("tenant-1", "invoice-1", "demo", "payment-method-secret"), Status: "succeeded"}, invoice: Invoice{ID: "invoice-1", TenantID: "tenant-1", TotalMinor: 900, PaidMinor: 900, Status: "paid"}}
-	service := NewService(repository, nil, nil)
+	repository := &paymentRepository{payment: PaymentAttempt{ID: "payment-1", InvoiceID: "invoice-1", TenantID: "tenant-1", ApplicationID: "app-1", Provider: "demo", IdempotencyKey: "payment-key", RequestHash: hashParts("tenant-1", "app-1", "invoice-1", "demo", "payment-method-secret"), Status: "succeeded"}, invoice: Invoice{ID: "invoice-1", TenantID: "tenant-1", ApplicationID: "app-1", TotalMinor: 900, PaidMinor: 900, Status: "paid"}}
+	service := newTestService(t, repository, nil)
 	ctx := platformprincipal.WithContext(t.Context(), platformprincipal.Principal{ID: "user-1", Type: platformprincipal.TypeUser, TenantID: "tenant-1"})
-	payment, duplicate, err := service.CreatePaymentAttempt(ctx, "tenant-1", "invoice-1", "demo", "payment-method-secret", "payment-key")
+	payment, duplicate, err := service.CreatePaymentAttempt(ctx, "tenant-1", "app-1", "invoice-1", "demo", "payment-method-secret", "payment-key")
 	if err != nil || !duplicate || payment.Status != "succeeded" {
 		t.Fatalf("payment=%+v duplicate=%v err=%v", payment, duplicate, err)
 	}
@@ -147,8 +208,8 @@ func TestCreatePaymentAttemptReplaysCompletedResultAfterInvoicePaid(t *testing.T
 func TestApplyPaymentResultMarksInvoicePaid(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, time.August, 31, 9, 0, 0, 0, time.FixedZone("UTC+8", 8*60*60))
-	repository := &paymentRepository{claim: true, payment: PaymentAttempt{ID: "payment-1", InvoiceID: "invoice-1", TenantID: "tenant-1", Provider: "test", AmountMinor: 1200, Status: "pending", Audit: Audit{Version: 1}}, invoice: Invoice{ID: "invoice-1", TenantID: "tenant-1", TotalMinor: 1200, Status: "open", Audit: Audit{Version: 2}}}
-	service := NewService(repository, nil, nil)
+	repository := &paymentRepository{claim: true, payment: PaymentAttempt{ID: "payment-1", InvoiceID: "invoice-1", TenantID: "tenant-1", ApplicationID: "app-1", Provider: "test", AmountMinor: 1200, Status: "pending", Audit: Audit{Version: 1}}, invoice: Invoice{ID: "invoice-1", TenantID: "tenant-1", ApplicationID: "app-1", TotalMinor: 1200, Status: "open", Audit: Audit{Version: 2}}}
+	service := newTestService(t, repository, nil)
 	service.transactor = transactionStub{}
 	service.now = func() time.Time { return now }
 	ctx := platformprincipal.WithContext(t.Context(), platformprincipal.Principal{ID: "provider-worker", Type: platformprincipal.TypeServiceAccount})
@@ -163,8 +224,8 @@ func TestApplyPaymentResultMarksInvoicePaid(t *testing.T) {
 
 func TestApplyPaymentResultTreatsProviderReplayAsDuplicate(t *testing.T) {
 	t.Parallel()
-	repository := &paymentRepository{claim: false, payment: PaymentAttempt{ID: "payment-1", InvoiceID: "invoice-1", TenantID: "tenant-1", Provider: "test", AmountMinor: 100, Status: "succeeded", Audit: Audit{Version: 2}}, invoice: Invoice{ID: "invoice-1", TenantID: "tenant-1", TotalMinor: 100, PaidMinor: 100, Status: "paid", Audit: Audit{Version: 2}}}
-	service := NewService(repository, nil, nil)
+	repository := &paymentRepository{claim: false, payment: PaymentAttempt{ID: "payment-1", InvoiceID: "invoice-1", TenantID: "tenant-1", ApplicationID: "app-1", Provider: "test", AmountMinor: 100, Status: "succeeded", Audit: Audit{Version: 2}}, invoice: Invoice{ID: "invoice-1", TenantID: "tenant-1", ApplicationID: "app-1", TotalMinor: 100, PaidMinor: 100, Status: "paid", Audit: Audit{Version: 2}}}
+	service := newTestService(t, repository, nil)
 	service.transactor = transactionStub{}
 	ctx := platformprincipal.WithContext(t.Context(), platformprincipal.Principal{ID: "provider-worker", Type: platformprincipal.TypeServiceAccount})
 	_, _, duplicate, err := service.ApplyPaymentResult(ctx, "payment-1", "provider-1", "event-1", "succeeded", "", "", time.Now())
@@ -178,10 +239,10 @@ func TestApplyPaymentResultTreatsProviderReplayAsDuplicate(t *testing.T) {
 
 func TestRecordRefundRejectsAmountAboveRefundableBalance(t *testing.T) {
 	t.Parallel()
-	repository := &paymentRepository{payment: PaymentAttempt{ID: "payment-1", InvoiceID: "invoice-1", TenantID: "tenant-1", Status: "succeeded"}, invoice: Invoice{ID: "invoice-1", TenantID: "tenant-1", PaidMinor: 1000, RefundedMinor: 800}}
-	service := NewService(repository, nil, nil)
+	repository := &paymentRepository{payment: PaymentAttempt{ID: "payment-1", InvoiceID: "invoice-1", TenantID: "tenant-1", ApplicationID: "app-1", Status: "succeeded"}, invoice: Invoice{ID: "invoice-1", TenantID: "tenant-1", ApplicationID: "app-1", PaidMinor: 1000, RefundedMinor: 800}}
+	service := newTestService(t, repository, nil)
 	ctx := platformprincipal.WithContext(t.Context(), platformprincipal.Principal{ID: "user-1", Type: platformprincipal.TypeUser, TenantID: "tenant-1"})
-	if _, _, _, err := service.RecordRefund(ctx, "tenant-1", "payment-1", "provider-refund", "refund-key", 201, "duplicate", "succeeded"); err == nil {
+	if _, _, _, err := service.RecordRefund(ctx, "tenant-1", "app-1", "payment-1", "provider-refund", "refund-key", 201, "duplicate", "succeeded"); err == nil {
 		t.Fatal("expected over-refund rejection")
 	}
 }
@@ -196,7 +257,7 @@ func TestValidPaymentTransitionRejectsTerminalRegression(t *testing.T) {
 	}
 }
 
-func (r *previewRepository) GetSubscription(context.Context, string, string) (Subscription, error) {
+func (r *previewRepository) GetSubscription(context.Context, string, string, string) (Subscription, error) {
 	return r.subscription, nil
 }
 func (r *previewRepository) GetPlan(context.Context, string, string) (Plan, error) {
@@ -206,9 +267,15 @@ func (r *previewRepository) ListUsagePrices(context.Context, string) ([]UsagePri
 	return r.prices, nil
 }
 
-type usageStub struct{ quantities map[string]int64 }
+type usageStub struct {
+	quantities    map[string]int64
+	applicationID *string
+}
 
-func (u usageStub) Total(_ context.Context, _, meter string, _, _ time.Time) (int64, error) {
+func (u usageStub) Total(_ context.Context, _, applicationID, meter string, _, _ time.Time) (int64, error) {
+	if u.applicationID != nil {
+		*u.applicationID = applicationID
+	}
 	return u.quantities[meter], nil
 }
 
@@ -216,27 +283,43 @@ func TestPreviewInvoiceCalculatesBaseAndMeteredUsage(t *testing.T) {
 	t.Parallel()
 	start := time.Date(2026, time.August, 1, 0, 0, 0, 0, time.FixedZone("UTC+8", 8*60*60))
 	repository := &previewRepository{
-		subscription: Subscription{ID: "subscription-1", TenantID: "tenant-1", PlanID: "plan-1", CurrentPeriodStart: start, CurrentPeriodEnd: start.AddDate(0, 1, 0)},
+		subscription: Subscription{ID: "subscription-1", TenantID: "tenant-1", ApplicationID: "app-1", PlanID: "plan-1", CurrentPeriodStart: start, CurrentPeriodEnd: start.AddDate(0, 1, 0)},
 		plan:         Plan{ID: "plan-1", Name: "Pro", Currency: "CNY", BaseAmountMinor: 1000},
 		prices:       []UsagePrice{{MeterCode: "api.calls", IncludedQuantity: 100, UnitQuantity: 10, UnitAmountMinor: 25}},
 	}
-	service := NewService(repository, nil, usageStub{quantities: map[string]int64{"api.calls": 126}})
+	gotApplicationID := ""
+	service := newTestService(t, repository, usageStub{quantities: map[string]int64{"api.calls": 126}, applicationID: &gotApplicationID})
 	service.now = func() time.Time { return start }
 	ctx := platformprincipal.WithContext(t.Context(), platformprincipal.Principal{ID: "user-1", Type: platformprincipal.TypeUser, TenantID: "tenant-1"})
-	preview, err := service.PreviewInvoice(ctx, "tenant-1", "subscription-1", time.Time{}, time.Time{})
+	preview, err := service.PreviewInvoice(ctx, "tenant-1", "app-1", "subscription-1", time.Time{}, time.Time{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if preview.Invoice.TotalMinor != 1075 || len(preview.Lines) != 2 || preview.Lines[1].Quantity != 126 || preview.Lines[1].AmountMinor != 75 {
 		t.Fatalf("unexpected preview: %+v lines=%+v", preview.Invoice, preview.Lines)
 	}
+	if preview.Invoice.ApplicationID != "app-1" || gotApplicationID != "app-1" {
+		t.Fatalf("application scope invoice=%q metering=%q", preview.Invoice.ApplicationID, gotApplicationID)
+	}
 }
 func TestPreviewInvoiceRejectsCrossTenant(t *testing.T) {
 	t.Parallel()
-	service := NewService(&previewRepository{}, nil, usageStub{})
+	service := newTestService(t, &previewRepository{}, usageStub{})
 	ctx := platformprincipal.WithContext(t.Context(), platformprincipal.Principal{ID: "user-1", Type: platformprincipal.TypeUser, TenantID: "tenant-1"})
-	if _, err := service.PreviewInvoice(ctx, "tenant-2", "subscription-1", time.Now(), time.Now().Add(time.Hour)); err == nil {
+	if _, err := service.PreviewInvoice(ctx, "tenant-2", "app-1", "subscription-1", time.Now(), time.Now().Add(time.Hour)); err == nil {
 		t.Fatal("expected tenant access denial")
+	}
+}
+
+func TestPreviewInvoiceRejectsApplicationWithoutGrant(t *testing.T) {
+	t.Parallel()
+	service, err := NewService(&previewRepository{}, nil, usageStub{}, rejectingApplicationVerifier{err: appaccess.ErrNotGranted})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := platformprincipal.WithContext(t.Context(), platformprincipal.Principal{ID: "user-1", Type: platformprincipal.TypeUser, TenantID: "tenant-1"})
+	if _, err := service.PreviewInvoice(ctx, "tenant-1", "app-denied", "subscription-1", time.Now(), time.Now().Add(time.Hour)); err == nil {
+		t.Fatal("expected application access denial")
 	}
 }
 func TestUsageAmountRoundsUpAndChecksOverflow(t *testing.T) {

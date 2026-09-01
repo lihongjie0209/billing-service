@@ -1,0 +1,13 @@
+DROP INDEX idx_refunds_application_created;
+DROP INDEX idx_payment_attempts_application_created;
+DROP INDEX idx_invoices_application_status_created;
+DROP INDEX idx_subscriptions_application_status;
+ALTER TABLE refunds DROP COLUMN application_id;
+ALTER TABLE refunds DROP COLUMN tenant_id;
+ALTER TABLE payment_attempts DROP COLUMN application_id;
+ALTER TABLE invoice_generation_keys DROP COLUMN application_id;
+ALTER TABLE invoices DROP COLUMN application_id;
+ALTER TABLE subscription_claims DROP COLUMN application_id;
+ALTER TABLE subscriptions DROP COLUMN application_id;
+CREATE INDEX idx_subscriptions_tenant_status ON subscriptions(tenant_id,status,updated_at DESC);
+CREATE INDEX idx_invoices_tenant_status_created ON invoices(tenant_id,status,created_at DESC);

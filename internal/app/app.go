@@ -8,7 +8,6 @@ import (
 
 	"github.com/jmoiron/sqlx"
 	"github.com/lihongjie0209/billing-service/internal/authorization"
-	"github.com/lihongjie0209/billing-service/internal/billing"
 	"github.com/lihongjie0209/billing-service/internal/cache"
 	"github.com/lihongjie0209/billing-service/internal/config"
 	"github.com/lihongjie0209/billing-service/internal/database"
@@ -120,5 +119,3 @@ var CacheModule = fx.Module("cache", fx.Provide(newRedis, newLocker), fx.Invoke(
 		logger.Warn("redis is disabled")
 	}
 }))
-
-var BillingModule = fx.Module("billing", fx.Provide(billing.NewRepository, billing.NewMeteringClient, billing.NewPaymentGateway, billing.NewRuntimeService))

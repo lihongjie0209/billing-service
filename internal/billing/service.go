@@ -17,6 +17,7 @@ import (
 	"github.com/jmoiron/sqlx"
 	"github.com/lihongjie0209/billing-service/internal/apperror"
 	"github.com/lihongjie0209/billing-service/internal/database"
+	"github.com/lihongjie0209/microservice-platform-go/appaccess"
 	platformevents "github.com/lihongjie0209/microservice-platform-go/eventbus"
 	platformprincipal "github.com/lihongjie0209/microservice-platform-go/principal"
 	billingv1 "github.com/lihongjie0209/platform-protos/gen/go/platform/billing/v1"
@@ -27,29 +28,36 @@ var planCodePattern = regexp.MustCompile(`^[a-z][a-z0-9._-]{1,127}$`)
 var currencyPattern = regexp.MustCompile(`^[A-Z]{3}$`)
 
 type UsageReader interface {
-	Total(context.Context, string, string, time.Time, time.Time) (int64, error)
+	Total(context.Context, string, string, string, time.Time, time.Time) (int64, error)
 }
 
 type Service struct {
-	repository Repository
-	transactor transactionRunner
-	usage      UsageReader
-	gateway    PaymentGateway
-	now        func() time.Time
+	repository   Repository
+	transactor   transactionRunner
+	usage        UsageReader
+	gateway      PaymentGateway
+	applications appaccess.Verifier
+	now          func() time.Time
 }
 
 type transactionRunner interface {
 	Within(context.Context, *sql.TxOptions, func(*sqlx.Tx) error) error
 }
 
-func NewService(repository Repository, transactor *database.Transactor, usage UsageReader) *Service {
-	return &Service{repository: repository, transactor: transactor, usage: usage, now: time.Now}
+func NewService(repository Repository, transactor *database.Transactor, usage UsageReader, applications appaccess.Verifier) (*Service, error) {
+	if repository == nil || applications == nil {
+		return nil, errors.New("billing repository and application verifier are required")
+	}
+	return &Service{repository: repository, transactor: transactor, usage: usage, applications: applications, now: time.Now}, nil
 }
 
-func NewRuntimeService(repository Repository, transactor *database.Transactor, usage UsageReader, gateway PaymentGateway) *Service {
-	service := NewService(repository, transactor, usage)
+func NewRuntimeService(repository Repository, transactor *database.Transactor, usage UsageReader, gateway PaymentGateway, applications appaccess.Verifier) (*Service, error) {
+	service, err := NewService(repository, transactor, usage, applications)
+	if err != nil {
+		return nil, err
+	}
 	service.gateway = gateway
-	return service
+	return service, nil
 }
 
 func (s *Service) CreatePlan(ctx context.Context, value Plan) (Plan, error) {
@@ -69,7 +77,7 @@ func (s *Service) CreatePlan(ctx context.Context, value Plan) (Plan, error) {
 		if err := s.repository.CreatePlan(ctx, tx, value); err != nil {
 			return err
 		}
-		return s.addEvent(ctx, tx, "platform.billing.plan.changed.v1", "platform.billing.v1.PlanChanged", value.ID, "plan", "", actorID, now, &billingv1.PlanChangedEvent{Plan: ToProtoPlan(value), ChangeType: "created"})
+		return s.addEvent(ctx, tx, "platform.billing.plan.changed.v1", "platform.billing.v1.PlanChanged", value.ID, "plan", "", "", actorID, now, &billingv1.PlanChangedEvent{Plan: ToProtoPlan(value), ChangeType: "created"})
 	})
 	return value, translate(err)
 }
@@ -144,7 +152,7 @@ func (s *Service) UpdatePlan(ctx context.Context, value Plan, expected int64) (P
 		if err := s.repository.UpdatePlan(ctx, tx, current, expected); err != nil {
 			return err
 		}
-		return s.addEvent(ctx, tx, "platform.billing.plan.changed.v1", "platform.billing.v1.PlanChanged", current.ID, "plan", "", actorID, current.UpdatedAt, &billingv1.PlanChangedEvent{Plan: ToProtoPlan(current), ChangeType: "updated"})
+		return s.addEvent(ctx, tx, "platform.billing.plan.changed.v1", "platform.billing.v1.PlanChanged", current.ID, "plan", "", "", actorID, current.UpdatedAt, &billingv1.PlanChangedEvent{Plan: ToProtoPlan(current), ChangeType: "updated"})
 	})
 	return current, translate(err)
 }
@@ -201,12 +209,15 @@ func (s *Service) DeleteUsagePrice(ctx context.Context, id string, version int64
 	return translate(s.transactor.Within(ctx, nil, func(tx *sqlx.Tx) error { return s.repository.DeleteUsagePrice(ctx, tx, id, version) }))
 }
 
-func (s *Service) CreateSubscription(ctx context.Context, tenantID, planID string, startsAt time.Time, externalReference string) (Subscription, error) {
+func (s *Service) CreateSubscription(ctx context.Context, tenantID, applicationID, planID string, startsAt time.Time, externalReference string) (Subscription, error) {
 	actorID, err := actor(ctx)
 	if err != nil {
 		return Subscription{}, err
 	}
 	if err := authorizeTenant(ctx, tenantID); err != nil {
+		return Subscription{}, err
+	}
+	if err := s.verifyApplication(ctx, tenantID, applicationID); err != nil {
 		return Subscription{}, err
 	}
 	plan, err := s.repository.GetPlan(ctx, strings.TrimSpace(planID), "")
@@ -224,19 +235,19 @@ func (s *Service) CreateSubscription(ctx context.Context, tenantID, planID strin
 	if plan.TrialDays > 0 {
 		status = "trialing"
 	}
-	value := Subscription{ID: uuid.NewString(), TenantID: strings.TrimSpace(tenantID), PlanID: plan.ID, Status: status, CurrentPeriodStart: startsAt, CurrentPeriodEnd: addInterval(startsAt, plan.BillingInterval), ExternalReference: strings.TrimSpace(externalReference), Audit: newAudit(actorID, now)}
+	value := Subscription{ID: uuid.NewString(), TenantID: strings.TrimSpace(tenantID), ApplicationID: strings.TrimSpace(applicationID), PlanID: plan.ID, Status: status, CurrentPeriodStart: startsAt, CurrentPeriodEnd: addInterval(startsAt, plan.BillingInterval), ExternalReference: strings.TrimSpace(externalReference), Audit: newAudit(actorID, now)}
 	err = s.transactor.Within(ctx, nil, func(tx *sqlx.Tx) error {
-		if err := s.repository.ClaimSubscription(ctx, tx, value.TenantID, value.ID, value.Audit); err != nil {
+		if err := s.repository.ClaimSubscription(ctx, tx, value.TenantID, value.ApplicationID, value.ID, value.Audit); err != nil {
 			return err
 		}
 		if err := s.repository.CreateSubscription(ctx, tx, value); err != nil {
 			return err
 		}
-		return s.addEvent(ctx, tx, "platform.billing.subscription.changed.v1", "platform.billing.v1.SubscriptionChanged", value.ID, "subscription", value.TenantID, actorID, now, &billingv1.SubscriptionChangedEvent{Subscription: ToProtoSubscription(value), ChangeType: "created"})
+		return s.addEvent(ctx, tx, "platform.billing.subscription.changed.v1", "platform.billing.v1.SubscriptionChanged", value.ID, "subscription", value.TenantID, value.ApplicationID, actorID, now, &billingv1.SubscriptionChangedEvent{Subscription: ToProtoSubscription(value), ChangeType: "created"})
 	})
 	return value, translate(err)
 }
-func (s *Service) ChangeSubscription(ctx context.Context, tenantID, id, planID, effectiveMode string, version int64) (Subscription, error) {
+func (s *Service) ChangeSubscription(ctx context.Context, tenantID, applicationID, id, planID, effectiveMode string, version int64) (Subscription, error) {
 	actorID, err := actor(ctx)
 	if err != nil {
 		return Subscription{}, err
@@ -244,10 +255,13 @@ func (s *Service) ChangeSubscription(ctx context.Context, tenantID, id, planID, 
 	if err := authorizeTenant(ctx, tenantID); err != nil {
 		return Subscription{}, err
 	}
+	if err := s.verifyApplication(ctx, tenantID, applicationID); err != nil {
+		return Subscription{}, err
+	}
 	if effectiveMode != "immediate" && effectiveMode != "next_period" {
 		return Subscription{}, apperror.Invalid("effective_mode must be immediate or next_period", nil)
 	}
-	value, err := s.repository.GetSubscription(ctx, tenantID, id)
+	value, err := s.repository.GetSubscription(ctx, tenantID, applicationID, id)
 	if err != nil {
 		return Subscription{}, translate(err)
 	}
@@ -276,11 +290,11 @@ func (s *Service) ChangeSubscription(ctx context.Context, tenantID, id, planID, 
 		if err := s.repository.UpdateSubscription(ctx, tx, value, version); err != nil {
 			return err
 		}
-		return s.addEvent(ctx, tx, "platform.billing.subscription.changed.v1", "platform.billing.v1.SubscriptionChanged", value.ID, "subscription", value.TenantID, actorID, value.UpdatedAt, &billingv1.SubscriptionChangedEvent{Subscription: ToProtoSubscription(value), ChangeType: changeType})
+		return s.addEvent(ctx, tx, "platform.billing.subscription.changed.v1", "platform.billing.v1.SubscriptionChanged", value.ID, "subscription", value.TenantID, value.ApplicationID, actorID, value.UpdatedAt, &billingv1.SubscriptionChangedEvent{Subscription: ToProtoSubscription(value), ChangeType: changeType})
 	})
 	return value, translate(err)
 }
-func (s *Service) CancelSubscription(ctx context.Context, tenantID, id string, atPeriodEnd bool, version int64) (Subscription, error) {
+func (s *Service) CancelSubscription(ctx context.Context, tenantID, applicationID, id string, atPeriodEnd bool, version int64) (Subscription, error) {
 	actorID, err := actor(ctx)
 	if err != nil {
 		return Subscription{}, err
@@ -288,7 +302,10 @@ func (s *Service) CancelSubscription(ctx context.Context, tenantID, id string, a
 	if err := authorizeTenant(ctx, tenantID); err != nil {
 		return Subscription{}, err
 	}
-	value, err := s.repository.GetSubscription(ctx, tenantID, id)
+	if err := s.verifyApplication(ctx, tenantID, applicationID); err != nil {
+		return Subscription{}, err
+	}
+	value, err := s.repository.GetSubscription(ctx, tenantID, applicationID, id)
 	if err != nil {
 		return Subscription{}, translate(err)
 	}
@@ -311,7 +328,7 @@ func (s *Service) CancelSubscription(ctx context.Context, tenantID, id string, a
 			return err
 		}
 		if !atPeriodEnd {
-			if err := s.repository.ReleaseSubscriptionClaim(ctx, tx, value.TenantID, value.ID); err != nil {
+			if err := s.repository.ReleaseSubscriptionClaim(ctx, tx, value.TenantID, value.ApplicationID, value.ID); err != nil {
 				return err
 			}
 		}
@@ -319,7 +336,7 @@ func (s *Service) CancelSubscription(ctx context.Context, tenantID, id string, a
 		if atPeriodEnd {
 			changeType = "cancellation_scheduled"
 		}
-		return s.addEvent(ctx, tx, "platform.billing.subscription.changed.v1", "platform.billing.v1.SubscriptionChanged", value.ID, "subscription", value.TenantID, actorID, now, &billingv1.SubscriptionChangedEvent{Subscription: ToProtoSubscription(value), ChangeType: changeType})
+		return s.addEvent(ctx, tx, "platform.billing.subscription.changed.v1", "platform.billing.v1.SubscriptionChanged", value.ID, "subscription", value.TenantID, value.ApplicationID, actorID, now, &billingv1.SubscriptionChangedEvent{Subscription: ToProtoSubscription(value), ChangeType: changeType})
 	})
 	return value, translate(err)
 }
@@ -364,11 +381,11 @@ func (s *Service) ApplyDueSubscriptionTransitions(ctx context.Context, limit int
 				return updateErr
 			}
 			if current.Status == "canceled" {
-				if releaseErr := s.repository.ReleaseSubscriptionClaim(ctx, tx, current.TenantID, current.ID); releaseErr != nil {
+				if releaseErr := s.repository.ReleaseSubscriptionClaim(ctx, tx, current.TenantID, current.ApplicationID, current.ID); releaseErr != nil {
 					return releaseErr
 				}
 			}
-			return s.addEvent(ctx, tx, "platform.billing.subscription.changed.v1", "platform.billing.v1.SubscriptionChanged", current.ID, "subscription", current.TenantID, "billing-service:scheduler", now, &billingv1.SubscriptionChangedEvent{Subscription: ToProtoSubscription(current), ChangeType: changeType})
+			return s.addEvent(ctx, tx, "platform.billing.subscription.changed.v1", "platform.billing.v1.SubscriptionChanged", current.ID, "subscription", current.TenantID, current.ApplicationID, "billing-service:scheduler", now, &billingv1.SubscriptionChangedEvent{Subscription: ToProtoSubscription(current), ChangeType: changeType})
 		})
 		if errors.Is(err, ErrStaleVersion) {
 			continue
@@ -380,34 +397,43 @@ func (s *Service) ApplyDueSubscriptionTransitions(ctx context.Context, limit int
 	}
 	return applied, nil
 }
-func (s *Service) GetSubscription(ctx context.Context, tenantID, id string) (Subscription, Plan, error) {
+func (s *Service) GetSubscription(ctx context.Context, tenantID, applicationID, id string) (Subscription, Plan, error) {
 	if err := authorizeTenant(ctx, tenantID); err != nil {
 		return Subscription{}, Plan{}, err
 	}
-	value, err := s.repository.GetSubscription(ctx, tenantID, id)
+	if err := s.verifyApplication(ctx, tenantID, applicationID); err != nil {
+		return Subscription{}, Plan{}, err
+	}
+	value, err := s.repository.GetSubscription(ctx, tenantID, applicationID, id)
 	if err != nil {
 		return Subscription{}, Plan{}, translate(err)
 	}
 	plan, err := s.repository.GetPlan(ctx, value.PlanID, "")
 	return value, plan, translate(err)
 }
-func (s *Service) ListSubscriptions(ctx context.Context, tenantID, status string, page, size int) (Page[Subscription], error) {
+func (s *Service) ListSubscriptions(ctx context.Context, tenantID, applicationID, status string, page, size int) (Page[Subscription], error) {
 	if err := authorizeTenant(ctx, tenantID); err != nil {
+		return Page[Subscription]{}, err
+	}
+	if err := s.verifyApplication(ctx, tenantID, applicationID); err != nil {
 		return Page[Subscription]{}, err
 	}
 	page, size, err := pagination(page, size)
 	if err != nil {
 		return Page[Subscription]{}, err
 	}
-	items, total, err := s.repository.ListSubscriptions(ctx, tenantID, status, size, (page-1)*size)
+	items, total, err := s.repository.ListSubscriptions(ctx, tenantID, applicationID, status, size, (page-1)*size)
 	return Page[Subscription]{Items: items, Total: total, Page: page, PageSize: size}, translate(err)
 }
 
-func (s *Service) PreviewInvoice(ctx context.Context, tenantID, subscriptionID string, start, end time.Time) (InvoicePreview, error) {
+func (s *Service) PreviewInvoice(ctx context.Context, tenantID, applicationID, subscriptionID string, start, end time.Time) (InvoicePreview, error) {
 	if err := authorizeTenant(ctx, tenantID); err != nil {
 		return InvoicePreview{}, err
 	}
-	subscription, err := s.repository.GetSubscription(ctx, tenantID, subscriptionID)
+	if err := s.verifyApplication(ctx, tenantID, applicationID); err != nil {
+		return InvoicePreview{}, err
+	}
+	subscription, err := s.repository.GetSubscription(ctx, tenantID, applicationID, subscriptionID)
 	if err != nil {
 		return InvoicePreview{}, translate(err)
 	}
@@ -430,14 +456,14 @@ func (s *Service) PreviewInvoice(ctx context.Context, tenantID, subscriptionID s
 	}
 	now := s.now()
 	invoiceID := uuid.NewString()
-	invoice := Invoice{ID: invoiceID, TenantID: tenantID, SubscriptionID: subscription.ID, Currency: plan.Currency, Status: "draft", PeriodStart: start, PeriodEnd: end, Audit: newAudit("preview", now)}
+	invoice := Invoice{ID: invoiceID, TenantID: tenantID, ApplicationID: applicationID, SubscriptionID: subscription.ID, Currency: plan.Currency, Status: "draft", PeriodStart: start, PeriodEnd: end, Audit: newAudit("preview", now)}
 	lines := []InvoiceLine{{ID: uuid.NewString(), InvoiceID: invoiceID, Type: "base", Description: plan.Name, Quantity: 1, UnitQuantity: 1, UnitAmountMinor: plan.BaseAmountMinor, AmountMinor: plan.BaseAmountMinor, MetadataJSON: "{}", Audit: newAudit("preview", now)}}
 	subtotal := plan.BaseAmountMinor
 	for _, price := range prices {
 		if s.usage == nil {
 			return InvoicePreview{}, apperror.Unavailable("metering client is unavailable", nil)
 		}
-		quantity, err := s.usage.Total(ctx, tenantID, price.MeterCode, start, end)
+		quantity, err := s.usage.Total(ctx, tenantID, applicationID, price.MeterCode, start, end)
 		if err != nil {
 			return InvoicePreview{}, apperror.Unavailable("query metering usage", err)
 		}
@@ -456,7 +482,7 @@ func (s *Service) PreviewInvoice(ctx context.Context, tenantID, subscriptionID s
 	invoice.TotalMinor = subtotal
 	return InvoicePreview{Invoice: invoice, Lines: lines}, nil
 }
-func (s *Service) GenerateInvoice(ctx context.Context, tenantID, subscriptionID string, start, end time.Time, key string) (InvoicePreview, bool, error) {
+func (s *Service) GenerateInvoice(ctx context.Context, tenantID, applicationID, subscriptionID string, start, end time.Time, key string) (InvoicePreview, bool, error) {
 	actorID, err := actor(ctx)
 	if err != nil {
 		return InvoicePreview{}, false, err
@@ -464,7 +490,7 @@ func (s *Service) GenerateInvoice(ctx context.Context, tenantID, subscriptionID 
 	if strings.TrimSpace(key) == "" {
 		return InvoicePreview{}, false, apperror.Invalid("idempotency_key is required", nil)
 	}
-	preview, err := s.PreviewInvoice(ctx, tenantID, subscriptionID, start, end)
+	preview, err := s.PreviewInvoice(ctx, tenantID, applicationID, subscriptionID, start, end)
 	if err != nil {
 		return InvoicePreview{}, false, err
 	}
@@ -476,11 +502,11 @@ func (s *Service) GenerateInvoice(ctx context.Context, tenantID, subscriptionID 
 		preview.Lines[i].CreatedBy = actorID
 		preview.Lines[i].UpdatedBy = actorID
 	}
-	requestHash := hashParts(tenantID, subscriptionID, preview.Invoice.PeriodStart.Format(time.RFC3339Nano), preview.Invoice.PeriodEnd.Format(time.RFC3339Nano))
+	requestHash := hashParts(tenantID, applicationID, subscriptionID, preview.Invoice.PeriodStart.Format(time.RFC3339Nano), preview.Invoice.PeriodEnd.Format(time.RFC3339Nano))
 	duplicateID := ""
 	created := false
 	err = s.transactor.Within(ctx, nil, func(tx *sqlx.Tx) error {
-		claimedID, claimed, err := s.repository.ClaimInvoice(ctx, tx, key, preview.Invoice.ID, tenantID, requestHash, preview.Invoice.Audit)
+		claimedID, claimed, err := s.repository.ClaimInvoice(ctx, tx, key, preview.Invoice.ID, tenantID, applicationID, requestHash, preview.Invoice.Audit)
 		if err != nil {
 			return err
 		}
@@ -492,18 +518,18 @@ func (s *Service) GenerateInvoice(ctx context.Context, tenantID, subscriptionID 
 		if err := s.repository.CreateInvoice(ctx, tx, preview.Invoice, preview.Lines); err != nil {
 			return err
 		}
-		return s.addEvent(ctx, tx, "platform.billing.invoice.changed.v1", "platform.billing.v1.InvoiceChanged", preview.Invoice.ID, "invoice", tenantID, actorID, now, &billingv1.InvoiceChangedEvent{Invoice: ToProtoInvoice(preview.Invoice), Lines: ToProtoInvoiceLines(preview.Lines), ChangeType: "generated"})
+		return s.addEvent(ctx, tx, "platform.billing.invoice.changed.v1", "platform.billing.v1.InvoiceChanged", preview.Invoice.ID, "invoice", tenantID, preview.Invoice.ApplicationID, actorID, now, &billingv1.InvoiceChangedEvent{Invoice: ToProtoInvoice(preview.Invoice), Lines: ToProtoInvoiceLines(preview.Lines), ChangeType: "generated"})
 	})
 	if err != nil {
 		return InvoicePreview{}, false, translate(err)
 	}
 	if !created {
-		invoice, lines, err := s.repository.GetInvoice(ctx, tenantID, duplicateID)
+		invoice, lines, err := s.repository.GetInvoice(ctx, tenantID, applicationID, duplicateID)
 		return InvoicePreview{Invoice: invoice, Lines: lines}, true, translate(err)
 	}
 	return preview, false, nil
 }
-func (s *Service) FinalizeInvoice(ctx context.Context, tenantID, id string, dueAt time.Time, version int64) (Invoice, error) {
+func (s *Service) FinalizeInvoice(ctx context.Context, tenantID, applicationID, id string, dueAt time.Time, version int64) (Invoice, error) {
 	actorID, err := actor(ctx)
 	if err != nil {
 		return Invoice{}, err
@@ -511,7 +537,10 @@ func (s *Service) FinalizeInvoice(ctx context.Context, tenantID, id string, dueA
 	if err := authorizeTenant(ctx, tenantID); err != nil {
 		return Invoice{}, err
 	}
-	value, _, err := s.repository.GetInvoice(ctx, tenantID, id)
+	if err := s.verifyApplication(ctx, tenantID, applicationID); err != nil {
+		return Invoice{}, err
+	}
+	value, _, err := s.repository.GetInvoice(ctx, tenantID, applicationID, id)
 	if err != nil {
 		return Invoice{}, translate(err)
 	}
@@ -531,7 +560,7 @@ func (s *Service) FinalizeInvoice(ctx context.Context, tenantID, id string, dueA
 	err = s.transactor.Within(ctx, nil, func(tx *sqlx.Tx) error { return s.repository.UpdateInvoice(ctx, tx, value, version) })
 	return value, translate(err)
 }
-func (s *Service) VoidInvoice(ctx context.Context, tenantID, id, reason string, version int64) (Invoice, error) {
+func (s *Service) VoidInvoice(ctx context.Context, tenantID, applicationID, id, reason string, version int64) (Invoice, error) {
 	actorID, err := actor(ctx)
 	if err != nil {
 		return Invoice{}, err
@@ -539,10 +568,13 @@ func (s *Service) VoidInvoice(ctx context.Context, tenantID, id, reason string, 
 	if err := authorizeTenant(ctx, tenantID); err != nil {
 		return Invoice{}, err
 	}
+	if err := s.verifyApplication(ctx, tenantID, applicationID); err != nil {
+		return Invoice{}, err
+	}
 	if strings.TrimSpace(reason) == "" {
 		return Invoice{}, apperror.Invalid("void reason is required", nil)
 	}
-	value, _, err := s.repository.GetInvoice(ctx, tenantID, id)
+	value, _, err := s.repository.GetInvoice(ctx, tenantID, applicationID, id)
 	if err != nil {
 		return Invoice{}, translate(err)
 	}
@@ -556,31 +588,40 @@ func (s *Service) VoidInvoice(ctx context.Context, tenantID, id, reason string, 
 	err = s.transactor.Within(ctx, nil, func(tx *sqlx.Tx) error { return s.repository.UpdateInvoice(ctx, tx, value, version) })
 	return value, translate(err)
 }
-func (s *Service) GetInvoice(ctx context.Context, tenantID, id string) (Invoice, []InvoiceLine, error) {
+func (s *Service) GetInvoice(ctx context.Context, tenantID, applicationID, id string) (Invoice, []InvoiceLine, error) {
 	if err := authorizeTenant(ctx, tenantID); err != nil {
 		return Invoice{}, nil, err
 	}
-	v, lines, err := s.repository.GetInvoice(ctx, tenantID, id)
+	if err := s.verifyApplication(ctx, tenantID, applicationID); err != nil {
+		return Invoice{}, nil, err
+	}
+	v, lines, err := s.repository.GetInvoice(ctx, tenantID, applicationID, id)
 	return v, lines, translate(err)
 }
-func (s *Service) ListInvoices(ctx context.Context, tenantID, status string, from, to time.Time, page, size int) (Page[Invoice], error) {
+func (s *Service) ListInvoices(ctx context.Context, tenantID, applicationID, status string, from, to time.Time, page, size int) (Page[Invoice], error) {
 	if err := authorizeTenant(ctx, tenantID); err != nil {
+		return Page[Invoice]{}, err
+	}
+	if err := s.verifyApplication(ctx, tenantID, applicationID); err != nil {
 		return Page[Invoice]{}, err
 	}
 	page, size, err := pagination(page, size)
 	if err != nil {
 		return Page[Invoice]{}, err
 	}
-	items, total, err := s.repository.ListInvoices(ctx, tenantID, status, from, to, size, (page-1)*size)
+	items, total, err := s.repository.ListInvoices(ctx, tenantID, applicationID, status, from, to, size, (page-1)*size)
 	return Page[Invoice]{Items: items, Total: total, Page: page, PageSize: size}, translate(err)
 }
 
-func (s *Service) CreatePaymentAttempt(ctx context.Context, tenantID, invoiceID, provider, paymentMethodReference, key string) (PaymentAttempt, bool, error) {
+func (s *Service) CreatePaymentAttempt(ctx context.Context, tenantID, applicationID, invoiceID, provider, paymentMethodReference, key string) (PaymentAttempt, bool, error) {
 	actorID, err := actor(ctx)
 	if err != nil {
 		return PaymentAttempt{}, false, err
 	}
 	if err := authorizeTenant(ctx, tenantID); err != nil {
+		return PaymentAttempt{}, false, err
+	}
+	if err := s.verifyApplication(ctx, tenantID, applicationID); err != nil {
 		return PaymentAttempt{}, false, err
 	}
 	provider = strings.ToLower(strings.TrimSpace(provider))
@@ -589,9 +630,9 @@ func (s *Service) CreatePaymentAttempt(ctx context.Context, tenantID, invoiceID,
 	if invoiceID == "" || provider == "" || paymentMethodReference == "" || key == "" {
 		return PaymentAttempt{}, false, apperror.Invalid("invoice_id, provider, payment_method_reference and idempotency_key are required", nil)
 	}
-	requestHash := hashParts(tenantID, invoiceID, provider, paymentMethodReference)
+	requestHash := hashParts(tenantID, applicationID, invoiceID, provider, paymentMethodReference)
 	if existing, findErr := s.repository.GetPaymentByKey(ctx, key); findErr == nil {
-		if existing.TenantID != tenantID || existing.RequestHash != requestHash {
+		if existing.TenantID != tenantID || existing.ApplicationID != applicationID || existing.RequestHash != requestHash {
 			return PaymentAttempt{}, false, apperror.Conflict("idempotency key belongs to a different payment request", nil)
 		}
 		if existing.Status != "pending" && existing.Status != "requires_action" {
@@ -600,7 +641,7 @@ func (s *Service) CreatePaymentAttempt(ctx context.Context, tenantID, invoiceID,
 		if s.gateway == nil {
 			return existing, true, apperror.Unavailable("payment gateway is unavailable", nil)
 		}
-		result, gatewayErr := s.gateway.Create(ctx, PaymentCommand{AttemptID: existing.ID, TenantID: existing.TenantID, InvoiceID: existing.InvoiceID, Provider: existing.Provider, PaymentMethodReference: paymentMethodReference, Currency: existing.Currency, AmountMinor: existing.AmountMinor})
+		result, gatewayErr := s.gateway.Create(ctx, PaymentCommand{AttemptID: existing.ID, TenantID: existing.TenantID, ApplicationID: existing.ApplicationID, InvoiceID: existing.InvoiceID, Provider: existing.Provider, PaymentMethodReference: paymentMethodReference, Currency: existing.Currency, AmountMinor: existing.AmountMinor})
 		if gatewayErr != nil {
 			return existing, true, apperror.Unavailable("create provider payment", gatewayErr)
 		}
@@ -609,7 +650,7 @@ func (s *Service) CreatePaymentAttempt(ctx context.Context, tenantID, invoiceID,
 	} else if !errors.Is(findErr, ErrNotFound) {
 		return PaymentAttempt{}, false, translate(findErr)
 	}
-	invoice, _, err := s.repository.GetInvoice(ctx, tenantID, invoiceID)
+	invoice, _, err := s.repository.GetInvoice(ctx, tenantID, applicationID, invoiceID)
 	if err != nil {
 		return PaymentAttempt{}, false, translate(err)
 	}
@@ -618,7 +659,7 @@ func (s *Service) CreatePaymentAttempt(ctx context.Context, tenantID, invoiceID,
 		return PaymentAttempt{}, false, apperror.Conflict("invoice is not payable", nil)
 	}
 	now := s.now()
-	value := PaymentAttempt{ID: uuid.NewString(), InvoiceID: invoice.ID, TenantID: tenantID, Provider: provider, IdempotencyKey: key, RequestHash: requestHash, Currency: invoice.Currency, AmountMinor: outstanding, Status: "pending", Audit: newAudit(actorID, now)}
+	value := PaymentAttempt{ID: uuid.NewString(), InvoiceID: invoice.ID, TenantID: tenantID, ApplicationID: applicationID, Provider: provider, IdempotencyKey: key, RequestHash: requestHash, Currency: invoice.Currency, AmountMinor: outstanding, Status: "pending", Audit: newAudit(actorID, now)}
 	existingID := ""
 	created := false
 	err = s.transactor.Within(ctx, nil, func(tx *sqlx.Tx) error {
@@ -630,13 +671,13 @@ func (s *Service) CreatePaymentAttempt(ctx context.Context, tenantID, invoiceID,
 		if !claimed {
 			return nil
 		}
-		return s.addEvent(ctx, tx, "platform.billing.payment.changed.v1", "platform.billing.v1.PaymentChanged", value.ID, "payment_attempt", tenantID, actorID, now, &billingv1.PaymentChangedEvent{PaymentAttempt: ToProtoPayment(value), Invoice: ToProtoInvoice(invoice), ChangeType: "requested"})
+		return s.addEvent(ctx, tx, "platform.billing.payment.changed.v1", "platform.billing.v1.PaymentChanged", value.ID, "payment_attempt", tenantID, value.ApplicationID, actorID, now, &billingv1.PaymentChangedEvent{PaymentAttempt: ToProtoPayment(value), Invoice: ToProtoInvoice(invoice), ChangeType: "requested"})
 	})
 	if err != nil {
 		return PaymentAttempt{}, false, translate(err)
 	}
 	if !created {
-		existing, getErr := s.repository.GetPayment(ctx, tenantID, existingID)
+		existing, getErr := s.repository.GetPayment(ctx, tenantID, applicationID, existingID)
 		if getErr != nil {
 			return PaymentAttempt{}, true, translate(getErr)
 		}
@@ -648,7 +689,7 @@ func (s *Service) CreatePaymentAttempt(ctx context.Context, tenantID, invoiceID,
 	if s.gateway == nil {
 		return value, !created, apperror.Unavailable("payment gateway is unavailable", nil)
 	}
-	result, gatewayErr := s.gateway.Create(ctx, PaymentCommand{AttemptID: value.ID, TenantID: value.TenantID, InvoiceID: value.InvoiceID, Provider: value.Provider, PaymentMethodReference: paymentMethodReference, Currency: value.Currency, AmountMinor: value.AmountMinor})
+	result, gatewayErr := s.gateway.Create(ctx, PaymentCommand{AttemptID: value.ID, TenantID: value.TenantID, ApplicationID: value.ApplicationID, InvoiceID: value.InvoiceID, Provider: value.Provider, PaymentMethodReference: paymentMethodReference, Currency: value.Currency, AmountMinor: value.AmountMinor})
 	if gatewayErr != nil {
 		return value, !created, apperror.Unavailable("create provider payment", gatewayErr)
 	}
@@ -661,11 +702,14 @@ func (s *Service) ApplyPaymentResult(ctx context.Context, paymentID, providerPay
 	if err != nil {
 		return PaymentAttempt{}, Invoice{}, false, err
 	}
-	value, err := s.repository.GetPayment(ctx, "", strings.TrimSpace(paymentID))
+	value, err := s.repository.GetPayment(ctx, "", "", strings.TrimSpace(paymentID))
 	if err != nil {
 		return PaymentAttempt{}, Invoice{}, false, translate(err)
 	}
 	if err := authorizeTenant(ctx, value.TenantID); err != nil {
+		return PaymentAttempt{}, Invoice{}, false, err
+	}
+	if err := s.verifyApplication(ctx, value.TenantID, value.ApplicationID); err != nil {
 		return PaymentAttempt{}, Invoice{}, false, err
 	}
 	status = strings.ToLower(strings.TrimSpace(status))
@@ -676,7 +720,7 @@ func (s *Service) ApplyPaymentResult(ctx context.Context, paymentID, providerPay
 	if !validPaymentTransition(value.Status, status) {
 		return PaymentAttempt{}, Invoice{}, false, apperror.Conflict("payment status transition is not allowed", nil)
 	}
-	invoice, _, err := s.repository.GetInvoice(ctx, value.TenantID, value.InvoiceID)
+	invoice, _, err := s.repository.GetInvoice(ctx, value.TenantID, value.ApplicationID, value.InvoiceID)
 	if err != nil {
 		return PaymentAttempt{}, Invoice{}, false, translate(err)
 	}
@@ -715,7 +759,7 @@ func (s *Service) ApplyPaymentResult(ctx context.Context, paymentID, providerPay
 				return err
 			}
 		}
-		return s.addEvent(ctx, tx, "platform.billing.payment.changed.v1", "platform.billing.v1.PaymentChanged", value.ID, "payment_attempt", value.TenantID, actorID, now, &billingv1.PaymentChangedEvent{PaymentAttempt: ToProtoPayment(value), Invoice: ToProtoInvoice(invoice), ChangeType: status})
+		return s.addEvent(ctx, tx, "platform.billing.payment.changed.v1", "platform.billing.v1.PaymentChanged", value.ID, "payment_attempt", value.TenantID, value.ApplicationID, actorID, now, &billingv1.PaymentChangedEvent{PaymentAttempt: ToProtoPayment(value), Invoice: ToProtoInvoice(invoice), ChangeType: status})
 	})
 	return value, invoice, duplicate, translate(err)
 }
@@ -732,7 +776,7 @@ func validPaymentTransition(from, to string) bool {
 	}
 }
 
-func (s *Service) RecordRefund(ctx context.Context, tenantID, paymentID, providerRefundID, key string, amount int64, reason, status string) (Refund, Invoice, bool, error) {
+func (s *Service) RecordRefund(ctx context.Context, tenantID, applicationID, paymentID, providerRefundID, key string, amount int64, reason, status string) (Refund, Invoice, bool, error) {
 	actorID, err := actor(ctx)
 	if err != nil {
 		return Refund{}, Invoice{}, false, err
@@ -740,7 +784,10 @@ func (s *Service) RecordRefund(ctx context.Context, tenantID, paymentID, provide
 	if err := authorizeTenant(ctx, tenantID); err != nil {
 		return Refund{}, Invoice{}, false, err
 	}
-	payment, err := s.repository.GetPayment(ctx, tenantID, paymentID)
+	if err := s.verifyApplication(ctx, tenantID, applicationID); err != nil {
+		return Refund{}, Invoice{}, false, err
+	}
+	payment, err := s.repository.GetPayment(ctx, tenantID, applicationID, paymentID)
 	if err != nil {
 		return Refund{}, Invoice{}, false, translate(err)
 	}
@@ -751,7 +798,7 @@ func (s *Service) RecordRefund(ctx context.Context, tenantID, paymentID, provide
 	if !map[string]bool{"pending": true, "succeeded": true, "failed": true}[status] {
 		return Refund{}, Invoice{}, false, apperror.Invalid("invalid refund status", nil)
 	}
-	invoice, _, err := s.repository.GetInvoice(ctx, tenantID, payment.InvoiceID)
+	invoice, _, err := s.repository.GetInvoice(ctx, tenantID, applicationID, payment.InvoiceID)
 	if err != nil {
 		return Refund{}, Invoice{}, false, translate(err)
 	}
@@ -759,7 +806,7 @@ func (s *Service) RecordRefund(ctx context.Context, tenantID, paymentID, provide
 		return Refund{}, Invoice{}, false, apperror.Conflict("refund exceeds refundable amount", nil)
 	}
 	now := s.now()
-	value := Refund{ID: uuid.NewString(), PaymentAttemptID: payment.ID, InvoiceID: invoice.ID, ProviderRefundID: strings.TrimSpace(providerRefundID), IdempotencyKey: strings.TrimSpace(key), RequestHash: hashParts(tenantID, paymentID, fmt.Sprint(amount), strings.TrimSpace(reason)), AmountMinor: amount, Reason: strings.TrimSpace(reason), Status: status, Audit: newAudit(actorID, now)}
+	value := Refund{ID: uuid.NewString(), PaymentAttemptID: payment.ID, InvoiceID: invoice.ID, TenantID: tenantID, ApplicationID: applicationID, ProviderRefundID: strings.TrimSpace(providerRefundID), IdempotencyKey: strings.TrimSpace(key), RequestHash: hashParts(tenantID, applicationID, paymentID, fmt.Sprint(amount), strings.TrimSpace(reason)), AmountMinor: amount, Reason: strings.TrimSpace(reason), Status: status, Audit: newAudit(actorID, now)}
 	existingID, created := "", false
 	err = s.transactor.Within(ctx, nil, func(tx *sqlx.Tx) error {
 		id, claimed, claimErr := s.repository.ClaimRefund(ctx, tx, value)
@@ -781,7 +828,7 @@ func (s *Service) RecordRefund(ctx context.Context, tenantID, paymentID, provide
 				return err
 			}
 		}
-		return s.addEvent(ctx, tx, "platform.billing.refund.changed.v1", "platform.billing.v1.RefundChanged", value.ID, "refund", tenantID, actorID, now, &billingv1.RefundChangedEvent{Refund: ToProtoRefund(value), Invoice: ToProtoInvoice(invoice), ChangeType: status})
+		return s.addEvent(ctx, tx, "platform.billing.refund.changed.v1", "platform.billing.v1.RefundChanged", value.ID, "refund", tenantID, value.ApplicationID, actorID, now, &billingv1.RefundChangedEvent{Refund: ToProtoRefund(value), Invoice: ToProtoInvoice(invoice), ChangeType: status})
 	})
 	if err != nil {
 		return Refund{}, Invoice{}, false, translate(err)
@@ -811,8 +858,8 @@ func (s *Service) ReconcilePayment(ctx context.Context, provider string, from, t
 	return values, next, nil
 }
 
-func (s *Service) addEvent(ctx context.Context, tx *sqlx.Tx, subject, eventType, aggregateID, aggregateType, tenantID, actorID string, at time.Time, payload proto.Message) error {
-	envelope, err := platformevents.NewEnvelope(platformevents.Metadata{EventID: uuid.NewString(), EventType: eventType, AggregateID: aggregateID, AggregateType: aggregateType, TenantID: tenantID, SchemaVersion: 1, ActorID: actorID, OccurredAt: at}, payload)
+func (s *Service) addEvent(ctx context.Context, tx *sqlx.Tx, subject, eventType, aggregateID, aggregateType, tenantID, applicationID, actorID string, at time.Time, payload proto.Message) error {
+	envelope, err := platformevents.NewEnvelope(platformevents.Metadata{EventID: uuid.NewString(), EventType: eventType, AggregateID: aggregateID, AggregateType: aggregateType, TenantID: tenantID, ApplicationID: applicationID, SchemaVersion: 1, ActorID: actorID, OccurredAt: at}, payload)
 	if err != nil {
 		return err
 	}
@@ -839,6 +886,22 @@ func authorizeTenant(ctx context.Context, tenantID string) error {
 	}
 	if v.TenantID == "" || v.TenantID != strings.TrimSpace(tenantID) {
 		return apperror.Forbidden("tenant access denied")
+	}
+	return nil
+}
+
+func (s *Service) verifyApplication(ctx context.Context, tenantID, applicationID string) error {
+	tenantID = strings.TrimSpace(tenantID)
+	applicationID = strings.TrimSpace(applicationID)
+	if tenantID == "" || applicationID == "" {
+		return apperror.Invalid("tenant_id and application_id are required", nil)
+	}
+	err := s.applications.Verify(ctx, tenantID, applicationID)
+	if errors.Is(err, appaccess.ErrNotGranted) {
+		return apperror.Forbidden("application access denied")
+	}
+	if err != nil {
+		return apperror.Unavailable("application authorization is unavailable", err)
 	}
 	return nil
 }

@@ -60,60 +60,75 @@ type upsertUsagePriceRequest struct {
 }
 type createSubscriptionRequest struct {
 	TenantID          string    `json:"tenant_id"`
+	ApplicationID     string    `json:"application_id" binding:"required"`
 	PlanID            string    `json:"plan_id"`
 	StartsAt          time.Time `json:"starts_at"`
 	ExternalReference string    `json:"external_reference"`
 }
 type changeSubscriptionRequest struct {
 	TenantID      string `json:"tenant_id"`
+	ApplicationID string `json:"application_id" binding:"required"`
 	ID            string `json:"id"`
 	PlanID        string `json:"plan_id"`
 	EffectiveMode string `json:"effective_mode"`
 	Version       int64  `json:"version"`
 }
 type cancelSubscriptionRequest struct {
-	TenantID    string `json:"tenant_id"`
-	ID          string `json:"id"`
-	AtPeriodEnd bool   `json:"at_period_end"`
-	Version     int64  `json:"version"`
+	TenantID      string `json:"tenant_id"`
+	ApplicationID string `json:"application_id" binding:"required"`
+	ID            string `json:"id"`
+	AtPeriodEnd   bool   `json:"at_period_end"`
+	Version       int64  `json:"version"`
 }
 type getSubscriptionRequest struct {
-	TenantID string `json:"tenant_id"`
-	ID       string `json:"id"`
+	TenantID      string `json:"tenant_id"`
+	ApplicationID string `json:"application_id" binding:"required"`
+	ID            string `json:"id"`
 }
 type listSubscriptionsRequest struct {
-	TenantID string `json:"tenant_id"`
-	Status   string `json:"status"`
+	TenantID      string `json:"tenant_id"`
+	ApplicationID string `json:"application_id" binding:"required"`
+	Status        string `json:"status"`
 	pageRequest
 }
 type invoicePeriodRequest struct {
 	TenantID       string    `json:"tenant_id"`
+	ApplicationID  string    `json:"application_id" binding:"required"`
 	SubscriptionID string    `json:"subscription_id"`
 	PeriodStart    time.Time `json:"period_start"`
 	PeriodEnd      time.Time `json:"period_end"`
 	IdempotencyKey string    `json:"idempotency_key"`
 }
 type finalizeInvoiceRequest struct {
-	TenantID string    `json:"tenant_id"`
-	ID       string    `json:"id"`
-	DueAt    time.Time `json:"due_at"`
-	Version  int64     `json:"version"`
+	TenantID      string    `json:"tenant_id"`
+	ApplicationID string    `json:"application_id" binding:"required"`
+	ID            string    `json:"id"`
+	DueAt         time.Time `json:"due_at"`
+	Version       int64     `json:"version"`
 }
 type voidInvoiceRequest struct {
-	TenantID string `json:"tenant_id"`
-	ID       string `json:"id"`
-	Reason   string `json:"reason"`
-	Version  int64  `json:"version"`
+	TenantID      string `json:"tenant_id"`
+	ApplicationID string `json:"application_id" binding:"required"`
+	ID            string `json:"id"`
+	Reason        string `json:"reason"`
+	Version       int64  `json:"version"`
 }
 type listInvoicesRequest struct {
-	TenantID    string    `json:"tenant_id"`
-	Status      string    `json:"status"`
-	CreatedFrom time.Time `json:"created_from"`
-	CreatedTo   time.Time `json:"created_to"`
+	TenantID      string    `json:"tenant_id"`
+	ApplicationID string    `json:"application_id" binding:"required"`
+	Status        string    `json:"status"`
+	CreatedFrom   time.Time `json:"created_from"`
+	CreatedTo     time.Time `json:"created_to"`
 	pageRequest
+}
+type getInvoiceRequest struct {
+	TenantID      string `json:"tenant_id"`
+	ApplicationID string `json:"application_id" binding:"required"`
+	ID            string `json:"id"`
 }
 type createPaymentRequest struct {
 	TenantID               string `json:"tenant_id"`
+	ApplicationID          string `json:"application_id" binding:"required"`
 	InvoiceID              string `json:"invoice_id"`
 	Provider               string `json:"provider"`
 	PaymentMethodReference string `json:"payment_method_reference"`
@@ -130,6 +145,7 @@ type applyPaymentRequest struct {
 }
 type recordRefundRequest struct {
 	TenantID         string `json:"tenant_id"`
+	ApplicationID    string `json:"application_id" binding:"required"`
 	PaymentAttemptID string `json:"payment_attempt_id"`
 	ProviderRefundID string `json:"provider_refund_id"`
 	IdempotencyKey   string `json:"idempotency_key"`
@@ -234,7 +250,7 @@ func (h *Handler) CreateSubscription(c *gin.Context) {
 	if !ok {
 		return
 	}
-	v, e := h.billing.CreateSubscription(c.Request.Context(), r.TenantID, r.PlanID, r.StartsAt, r.ExternalReference)
+	v, e := h.billing.CreateSubscription(c.Request.Context(), r.TenantID, r.ApplicationID, r.PlanID, r.StartsAt, r.ExternalReference)
 	result(h, c, v, e)
 }
 func (h *Handler) ChangeSubscription(c *gin.Context) {
@@ -242,7 +258,7 @@ func (h *Handler) ChangeSubscription(c *gin.Context) {
 	if !ok {
 		return
 	}
-	v, e := h.billing.ChangeSubscription(c.Request.Context(), r.TenantID, r.ID, r.PlanID, r.EffectiveMode, r.Version)
+	v, e := h.billing.ChangeSubscription(c.Request.Context(), r.TenantID, r.ApplicationID, r.ID, r.PlanID, r.EffectiveMode, r.Version)
 	result(h, c, v, e)
 }
 func (h *Handler) CancelSubscription(c *gin.Context) {
@@ -250,7 +266,7 @@ func (h *Handler) CancelSubscription(c *gin.Context) {
 	if !ok {
 		return
 	}
-	v, e := h.billing.CancelSubscription(c.Request.Context(), r.TenantID, r.ID, r.AtPeriodEnd, r.Version)
+	v, e := h.billing.CancelSubscription(c.Request.Context(), r.TenantID, r.ApplicationID, r.ID, r.AtPeriodEnd, r.Version)
 	result(h, c, v, e)
 }
 func (h *Handler) GetSubscription(c *gin.Context) {
@@ -258,7 +274,7 @@ func (h *Handler) GetSubscription(c *gin.Context) {
 	if !ok {
 		return
 	}
-	v, p, e := h.billing.GetSubscription(c.Request.Context(), r.TenantID, r.ID)
+	v, p, e := h.billing.GetSubscription(c.Request.Context(), r.TenantID, r.ApplicationID, r.ID)
 	result(h, c, gin.H{"subscription": v, "plan": toPlanView(p)}, e)
 }
 func (h *Handler) ListSubscriptions(c *gin.Context) {
@@ -266,7 +282,7 @@ func (h *Handler) ListSubscriptions(c *gin.Context) {
 	if !ok {
 		return
 	}
-	v, e := h.billing.ListSubscriptions(c.Request.Context(), r.TenantID, r.Status, r.Page, r.PageSize)
+	v, e := h.billing.ListSubscriptions(c.Request.Context(), r.TenantID, r.ApplicationID, r.Status, r.Page, r.PageSize)
 	result(h, c, v, e)
 }
 func (h *Handler) PreviewInvoice(c *gin.Context) {
@@ -274,7 +290,7 @@ func (h *Handler) PreviewInvoice(c *gin.Context) {
 	if !ok {
 		return
 	}
-	v, e := h.billing.PreviewInvoice(c.Request.Context(), r.TenantID, r.SubscriptionID, r.PeriodStart, r.PeriodEnd)
+	v, e := h.billing.PreviewInvoice(c.Request.Context(), r.TenantID, r.ApplicationID, r.SubscriptionID, r.PeriodStart, r.PeriodEnd)
 	result(h, c, invoicePreviewView(v), e)
 }
 func (h *Handler) GenerateInvoice(c *gin.Context) {
@@ -282,7 +298,7 @@ func (h *Handler) GenerateInvoice(c *gin.Context) {
 	if !ok {
 		return
 	}
-	v, d, e := h.billing.GenerateInvoice(c.Request.Context(), r.TenantID, r.SubscriptionID, r.PeriodStart, r.PeriodEnd, r.IdempotencyKey)
+	v, d, e := h.billing.GenerateInvoice(c.Request.Context(), r.TenantID, r.ApplicationID, r.SubscriptionID, r.PeriodStart, r.PeriodEnd, r.IdempotencyKey)
 	result(h, c, gin.H{"invoice": v.Invoice, "lines": toInvoiceLineViews(v.Lines), "duplicate": d}, e)
 }
 func (h *Handler) FinalizeInvoice(c *gin.Context) {
@@ -290,7 +306,7 @@ func (h *Handler) FinalizeInvoice(c *gin.Context) {
 	if !ok {
 		return
 	}
-	v, e := h.billing.FinalizeInvoice(c.Request.Context(), r.TenantID, r.ID, r.DueAt, r.Version)
+	v, e := h.billing.FinalizeInvoice(c.Request.Context(), r.TenantID, r.ApplicationID, r.ID, r.DueAt, r.Version)
 	result(h, c, v, e)
 }
 func (h *Handler) VoidInvoice(c *gin.Context) {
@@ -298,15 +314,15 @@ func (h *Handler) VoidInvoice(c *gin.Context) {
 	if !ok {
 		return
 	}
-	v, e := h.billing.VoidInvoice(c.Request.Context(), r.TenantID, r.ID, r.Reason, r.Version)
+	v, e := h.billing.VoidInvoice(c.Request.Context(), r.TenantID, r.ApplicationID, r.ID, r.Reason, r.Version)
 	result(h, c, v, e)
 }
 func (h *Handler) GetInvoice(c *gin.Context) {
-	r, ok := decode[idVersionRequest](h, c)
+	r, ok := decode[getInvoiceRequest](h, c)
 	if !ok {
 		return
 	}
-	v, l, e := h.billing.GetInvoice(c.Request.Context(), r.TenantID, r.ID)
+	v, l, e := h.billing.GetInvoice(c.Request.Context(), r.TenantID, r.ApplicationID, r.ID)
 	result(h, c, gin.H{"invoice": v, "lines": toInvoiceLineViews(l)}, e)
 }
 
@@ -366,7 +382,7 @@ func (h *Handler) ListInvoices(c *gin.Context) {
 	if !ok {
 		return
 	}
-	v, e := h.billing.ListInvoices(c.Request.Context(), r.TenantID, r.Status, r.CreatedFrom, r.CreatedTo, r.Page, r.PageSize)
+	v, e := h.billing.ListInvoices(c.Request.Context(), r.TenantID, r.ApplicationID, r.Status, r.CreatedFrom, r.CreatedTo, r.Page, r.PageSize)
 	result(h, c, v, e)
 }
 func (h *Handler) CreatePaymentAttempt(c *gin.Context) {
@@ -374,7 +390,7 @@ func (h *Handler) CreatePaymentAttempt(c *gin.Context) {
 	if !ok {
 		return
 	}
-	v, d, e := h.billing.CreatePaymentAttempt(c.Request.Context(), r.TenantID, r.InvoiceID, r.Provider, r.PaymentMethodReference, r.IdempotencyKey)
+	v, d, e := h.billing.CreatePaymentAttempt(c.Request.Context(), r.TenantID, r.ApplicationID, r.InvoiceID, r.Provider, r.PaymentMethodReference, r.IdempotencyKey)
 	result(h, c, gin.H{"payment_attempt": v, "duplicate": d}, e)
 }
 func (h *Handler) ApplyPaymentResult(c *gin.Context) {
@@ -390,6 +406,6 @@ func (h *Handler) RecordRefund(c *gin.Context) {
 	if !ok {
 		return
 	}
-	v, i, d, e := h.billing.RecordRefund(c.Request.Context(), r.TenantID, r.PaymentAttemptID, r.ProviderRefundID, r.IdempotencyKey, r.AmountMinor, r.Reason, r.Status)
+	v, i, d, e := h.billing.RecordRefund(c.Request.Context(), r.TenantID, r.ApplicationID, r.PaymentAttemptID, r.ProviderRefundID, r.IdempotencyKey, r.AmountMinor, r.Reason, r.Status)
 	result(h, c, gin.H{"refund": v, "invoice": i, "duplicate": d}, e)
 }

@@ -1026,7 +1026,13 @@ const docTemplate = `{
         },
         "httptransport.cancelSubscriptionRequest": {
             "type": "object",
+            "required": [
+                "application_id"
+            ],
             "properties": {
+                "application_id": {
+                    "type": "string"
+                },
                 "at_period_end": {
                     "type": "boolean"
                 },
@@ -1043,7 +1049,13 @@ const docTemplate = `{
         },
         "httptransport.changeSubscriptionRequest": {
             "type": "object",
+            "required": [
+                "application_id"
+            ],
             "properties": {
+                "application_id": {
+                    "type": "string"
+                },
                 "effective_mode": {
                     "type": "string"
                 },
@@ -1063,7 +1075,13 @@ const docTemplate = `{
         },
         "httptransport.createPaymentRequest": {
             "type": "object",
+            "required": [
+                "application_id"
+            ],
             "properties": {
+                "application_id": {
+                    "type": "string"
+                },
                 "idempotency_key": {
                     "type": "string"
                 },
@@ -1112,7 +1130,13 @@ const docTemplate = `{
         },
         "httptransport.createSubscriptionRequest": {
             "type": "object",
+            "required": [
+                "application_id"
+            ],
             "properties": {
+                "application_id": {
+                    "type": "string"
+                },
                 "external_reference": {
                     "type": "string"
                 },
@@ -1129,7 +1153,13 @@ const docTemplate = `{
         },
         "httptransport.finalizeInvoiceRequest": {
             "type": "object",
+            "required": [
+                "application_id"
+            ],
             "properties": {
+                "application_id": {
+                    "type": "string"
+                },
                 "due_at": {
                     "type": "string"
                 },
@@ -1157,7 +1187,13 @@ const docTemplate = `{
         },
         "httptransport.getSubscriptionRequest": {
             "type": "object",
+            "required": [
+                "application_id"
+            ],
             "properties": {
+                "application_id": {
+                    "type": "string"
+                },
                 "id": {
                     "type": "string"
                 },
@@ -1182,7 +1218,13 @@ const docTemplate = `{
         },
         "httptransport.invoicePeriodRequest": {
             "type": "object",
+            "required": [
+                "application_id"
+            ],
             "properties": {
+                "application_id": {
+                    "type": "string"
+                },
                 "idempotency_key": {
                     "type": "string"
                 },
@@ -1202,7 +1244,13 @@ const docTemplate = `{
         },
         "httptransport.listInvoicesRequest": {
             "type": "object",
+            "required": [
+                "application_id"
+            ],
             "properties": {
+                "application_id": {
+                    "type": "string"
+                },
                 "created_from": {
                     "type": "string"
                 },
@@ -1242,7 +1290,13 @@ const docTemplate = `{
         },
         "httptransport.listSubscriptionsRequest": {
             "type": "object",
+            "required": [
+                "application_id"
+            ],
             "properties": {
+                "application_id": {
+                    "type": "string"
+                },
                 "page": {
                     "type": "integer"
                 },
@@ -1259,9 +1313,15 @@ const docTemplate = `{
         },
         "httptransport.recordRefundRequest": {
             "type": "object",
+            "required": [
+                "application_id"
+            ],
             "properties": {
                 "amount_minor": {
                     "type": "integer"
+                },
+                "application_id": {
+                    "type": "string"
                 },
                 "idempotency_key": {
                     "type": "string"
@@ -1349,7 +1409,13 @@ const docTemplate = `{
         },
         "httptransport.voidInvoiceRequest": {
             "type": "object",
+            "required": [
+                "application_id"
+            ],
             "properties": {
+                "application_id": {
+                    "type": "string"
+                },
                 "id": {
                     "type": "string"
                 },

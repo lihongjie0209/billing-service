@@ -17,6 +17,7 @@ import (
 	"github.com/lihongjie0209/billing-service/internal/app"
 	"github.com/lihongjie0209/billing-service/internal/auth"
 	"github.com/lihongjie0209/billing-service/internal/config"
+	applicationv1 "github.com/lihongjie0209/platform-protos/gen/go/platform/application/v1"
 	authorizationv1 "github.com/lihongjie0209/platform-protos/gen/go/platform/authorization/v1"
 	billingv1 "github.com/lihongjie0209/platform-protos/gen/go/platform/billing/v1"
 	importv1 "github.com/lihongjie0209/platform-protos/gen/go/platform/import/v1"
@@ -64,6 +65,7 @@ func TestHTTPAndGRPCEndToEnd(t *testing.T) {
 	httpAddress := freeAddress(t)
 	grpcAddress := freeAddress(t)
 	authorizationAddress := startAllowAuthorizationServer(t)
+	applicationAddress := startAllowApplicationServer(t)
 	const secret = "01234567890123456789012345678901"
 	cfg := config.Config{
 		Runtime:       config.Runtime{ActiveProfile: "integration"},
@@ -81,6 +83,7 @@ func TestHTTPAndGRPCEndToEnd(t *testing.T) {
 		Cron:          config.Cron{Enabled: false, Timezone: "UTC"},
 		Idempotency:   config.Idempotency{Enabled: true, ProcessingTTL: 30 * time.Second, ResultTTL: time.Hour, FailureTTL: time.Minute},
 		Outbound: config.Outbound{GRPC: map[string]config.GRPCUpstream{
+			"application":   {Target: applicationAddress, Timeout: 2 * time.Second},
 			"authorization": {Target: authorizationAddress, Timeout: 2 * time.Second},
 		}},
 	}
@@ -159,6 +162,34 @@ func TestHTTPAndGRPCEndToEnd(t *testing.T) {
 	if err != nil || plan.GetPlan().GetCode() != "integration-plan" {
 		t.Fatalf("imported plan=%v err=%v", plan, err)
 	}
+}
+
+type allowApplicationServer struct {
+	applicationv1.UnimplementedApplicationServiceServer
+}
+
+func (allowApplicationServer) BatchCheckTenantApplications(_ context.Context, request *applicationv1.BatchCheckTenantApplicationsRequest) (*applicationv1.BatchCheckTenantApplicationsResponse, error) {
+	decisions := make([]*applicationv1.TenantApplicationDecision, 0, len(request.GetApplicationIds()))
+	for _, applicationID := range request.GetApplicationIds() {
+		decisions = append(decisions, &applicationv1.TenantApplicationDecision{ApplicationId: applicationID, Granted: true})
+	}
+	return &applicationv1.BatchCheckTenantApplicationsResponse{Decisions: decisions}, nil
+}
+
+func startAllowApplicationServer(t *testing.T) string {
+	t.Helper()
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := grpc.NewServer()
+	applicationv1.RegisterApplicationServiceServer(server, allowApplicationServer{})
+	go func() { _ = server.Serve(listener) }()
+	t.Cleanup(func() {
+		server.Stop()
+		_ = listener.Close()
+	})
+	return listener.Addr().String()
 }
 
 type allowAuthorizationServer struct {
