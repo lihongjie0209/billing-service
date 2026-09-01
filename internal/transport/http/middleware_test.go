@@ -45,6 +45,22 @@ func TestAuthorizationProtectsPlanMutations(t *testing.T) {
 	}
 }
 
+func TestBillingHTTPRequirementCoversEveryBusinessRoute(t *testing.T) {
+	t.Parallel()
+	routes := []string{
+		"/api/v1/plans/create", "/api/v1/plans/update", "/api/v1/plans/get", "/api/v1/plans/list", "/api/v1/plans/usage-prices/upsert", "/api/v1/plans/usage-prices/delete",
+		"/api/v1/subscriptions/create", "/api/v1/subscriptions/change", "/api/v1/subscriptions/cancel", "/api/v1/subscriptions/get", "/api/v1/subscriptions/list",
+		"/api/v1/invoices/preview", "/api/v1/invoices/generate", "/api/v1/invoices/finalize", "/api/v1/invoices/void", "/api/v1/invoices/get", "/api/v1/invoices/list",
+		"/api/v1/payments/create-attempt", "/api/v1/payments/apply-result", "/api/v1/payments/refunds/record",
+	}
+	for _, route := range routes {
+		requirement, ok := billingHTTPRequirement(route)
+		if !ok || requirement.Resource == "" || requirement.Action == "" || requirement.Scope != platformauthz.ScopePrincipal {
+			t.Fatalf("route %q requirement = %+v, %v", route, requirement, ok)
+		}
+	}
+}
+
 func TestAuthorizationReportsDecisionOutageAsUnavailable(t *testing.T) {
 	t.Parallel()
 	gin.SetMode(gin.TestMode)

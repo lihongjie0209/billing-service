@@ -48,7 +48,7 @@ func NewServer(lc fx.Lifecycle, cfg config.Config, authService *auth.Service, au
 		grpc.MaxRecvMsgSize(cfg.GRPC.MaxReceiveBytes),
 		grpc.StatsHandler(otelgrpc.NewServerHandler()),
 		grpc.ChainUnaryInterceptor(environmentInterceptor(cfg.Runtime.ActiveProfile), requestIDInterceptor, idempotencyInterceptor, recoveryInterceptor(logger), authInterceptor(authService, cfg.Auth), platformauthz.UnaryServerInterceptor(authorizer, billingRequirement), metricsInterceptor(metrics, logger)),
-		grpc.ChainStreamInterceptor(environmentStreamInterceptor(cfg.Runtime.ActiveProfile), requestIDStreamInterceptor, idempotencyStreamInterceptor, recoveryStreamInterceptor(logger), authStreamInterceptor(authService, cfg.Auth), metricsStreamInterceptor(metrics, logger)),
+		grpc.ChainStreamInterceptor(environmentStreamInterceptor(cfg.Runtime.ActiveProfile), requestIDStreamInterceptor, idempotencyStreamInterceptor, recoveryStreamInterceptor(logger), authStreamInterceptor(authService, cfg.Auth), platformauthz.StreamServerInterceptor(authorizer, billingRequirement), metricsStreamInterceptor(metrics, logger)),
 	}
 	if cfg.GRPC.TLS.Enabled {
 		creds, err := serverCredentials(cfg.GRPC.TLS)
@@ -71,19 +71,36 @@ func NewServer(lc fx.Lifecycle, cfg config.Config, authService *auth.Service, au
 }
 
 func billingRequirement(method string) (platformauthz.Requirement, bool) {
-	actions := map[string]string{
-		billingv1.BillingService_CreatePlan_FullMethodName:       "create",
-		billingv1.BillingService_UpdatePlan_FullMethodName:       "update",
-		billingv1.BillingService_UpsertUsagePrice_FullMethodName: "update",
-		billingv1.BillingService_DeleteUsagePrice_FullMethodName: "delete",
-		billingv1.BillingService_ReconcilePayment_FullMethodName: "reconcile",
+	requirements := map[string]platformauthz.Requirement{
+		billingv1.BillingService_CreatePlan_FullMethodName:                  {Resource: "billing.plan", Action: "create", Scope: platformauthz.ScopePrincipal},
+		billingv1.BillingService_UpdatePlan_FullMethodName:                  {Resource: "billing.plan", Action: "update", Scope: platformauthz.ScopePrincipal},
+		billingv1.BillingService_GetPlan_FullMethodName:                     {Resource: "billing.plan", Action: "read", Scope: platformauthz.ScopePrincipal},
+		billingv1.BillingService_ListPlans_FullMethodName:                   {Resource: "billing.plan", Action: "list", Scope: platformauthz.ScopePrincipal},
+		billingv1.BillingService_UpsertUsagePrice_FullMethodName:            {Resource: "billing.plan", Action: "update", Scope: platformauthz.ScopePrincipal},
+		billingv1.BillingService_DeleteUsagePrice_FullMethodName:            {Resource: "billing.plan", Action: "delete", Scope: platformauthz.ScopePrincipal},
+		billingv1.BillingService_CreateSubscription_FullMethodName:          {Resource: "billing.subscription", Action: "create", Scope: platformauthz.ScopePrincipal},
+		billingv1.BillingService_ChangeSubscription_FullMethodName:          {Resource: "billing.subscription", Action: "update", Scope: platformauthz.ScopePrincipal},
+		billingv1.BillingService_CancelSubscription_FullMethodName:          {Resource: "billing.subscription", Action: "cancel", Scope: platformauthz.ScopePrincipal},
+		billingv1.BillingService_GetSubscription_FullMethodName:             {Resource: "billing.subscription", Action: "read", Scope: platformauthz.ScopePrincipal},
+		billingv1.BillingService_ListSubscriptions_FullMethodName:           {Resource: "billing.subscription", Action: "list", Scope: platformauthz.ScopePrincipal},
+		billingv1.BillingService_PreviewInvoice_FullMethodName:              {Resource: "billing.invoice", Action: "preview", Scope: platformauthz.ScopePrincipal},
+		billingv1.BillingService_GenerateInvoice_FullMethodName:             {Resource: "billing.invoice", Action: "generate", Scope: platformauthz.ScopePrincipal},
+		billingv1.BillingService_FinalizeInvoice_FullMethodName:             {Resource: "billing.invoice", Action: "finalize", Scope: platformauthz.ScopePrincipal},
+		billingv1.BillingService_VoidInvoice_FullMethodName:                 {Resource: "billing.invoice", Action: "void", Scope: platformauthz.ScopePrincipal},
+		billingv1.BillingService_GetInvoice_FullMethodName:                  {Resource: "billing.invoice", Action: "read", Scope: platformauthz.ScopePrincipal},
+		billingv1.BillingService_ListInvoices_FullMethodName:                {Resource: "billing.invoice", Action: "list", Scope: platformauthz.ScopePrincipal},
+		billingv1.BillingService_CreatePaymentAttempt_FullMethodName:        {Resource: "billing.payment", Action: "create", Scope: platformauthz.ScopePrincipal},
+		billingv1.BillingService_ApplyPaymentResult_FullMethodName:          {Resource: "billing.payment", Action: "apply_result", Scope: platformauthz.ScopePrincipal},
+		billingv1.BillingService_RecordRefund_FullMethodName:                {Resource: "billing.payment", Action: "refund", Scope: platformauthz.ScopePrincipal},
+		billingv1.BillingService_ReconcilePayment_FullMethodName:            {Resource: "billing.payment", Action: "reconcile", Scope: platformauthz.ScopePrincipal},
+		exportv1.ExportProviderService_DescribeDataset_FullMethodName:       {Resource: "billing.export", Action: "describe", Scope: platformauthz.ScopePrincipal},
+		exportv1.ExportProviderService_StreamRows_FullMethodName:            {Resource: "billing.export", Action: "read", Scope: platformauthz.ScopePrincipal},
+		importv1.ImportProviderService_DescribeImportDataset_FullMethodName: {Resource: "billing.import", Action: "describe", Scope: platformauthz.ScopePrincipal},
+		importv1.ImportProviderService_ValidateRows_FullMethodName:          {Resource: "billing.import", Action: "validate", Scope: platformauthz.ScopePrincipal},
+		importv1.ImportProviderService_ApplyRows_FullMethodName:             {Resource: "billing.import", Action: "apply", Scope: platformauthz.ScopePrincipal},
 	}
-	action, ok := actions[method]
-	resource := "billing.plan"
-	if method == billingv1.BillingService_ReconcilePayment_FullMethodName {
-		resource = "billing.payment"
-	}
-	return platformauthz.Requirement{Resource: resource, Action: action}, ok
+	requirement, ok := requirements[method]
+	return requirement, ok
 }
 
 func (s *Server) start(enabled bool) func(context.Context) error {

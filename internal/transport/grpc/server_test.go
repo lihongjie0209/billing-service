@@ -8,7 +8,11 @@ import (
 	"github.com/lihongjie0209/billing-service/internal/auth"
 	"github.com/lihongjie0209/billing-service/internal/config"
 	"github.com/lihongjie0209/billing-service/internal/requestid"
+	platformauthz "github.com/lihongjie0209/microservice-platform-go/authz"
 	platformprincipal "github.com/lihongjie0209/microservice-platform-go/principal"
+	billingv1 "github.com/lihongjie0209/platform-protos/gen/go/platform/billing/v1"
+	exportv1 "github.com/lihongjie0209/platform-protos/gen/go/platform/export/v1"
+	importv1 "github.com/lihongjie0209/platform-protos/gen/go/platform/import/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
@@ -82,13 +86,20 @@ func TestAuthenticateGRPC_JWTInjectsPrincipal(t *testing.T) {
 	}
 }
 
-func TestBillingRequirementOnlyProtectsPlanMutations(t *testing.T) {
+func TestBillingRequirementCoversEveryBusinessMethod(t *testing.T) {
 	t.Parallel()
-	requirement, ok := billingRequirement("/platform.billing.v1.BillingService/CreatePlan")
-	if !ok || requirement.Resource != "billing.plan" || requirement.Action != "create" {
-		t.Fatalf("requirement=%+v protected=%v", requirement, ok)
+	methods := []string{
+		billingv1.BillingService_CreatePlan_FullMethodName, billingv1.BillingService_UpdatePlan_FullMethodName, billingv1.BillingService_GetPlan_FullMethodName, billingv1.BillingService_ListPlans_FullMethodName, billingv1.BillingService_UpsertUsagePrice_FullMethodName, billingv1.BillingService_DeleteUsagePrice_FullMethodName,
+		billingv1.BillingService_CreateSubscription_FullMethodName, billingv1.BillingService_ChangeSubscription_FullMethodName, billingv1.BillingService_CancelSubscription_FullMethodName, billingv1.BillingService_GetSubscription_FullMethodName, billingv1.BillingService_ListSubscriptions_FullMethodName,
+		billingv1.BillingService_PreviewInvoice_FullMethodName, billingv1.BillingService_GenerateInvoice_FullMethodName, billingv1.BillingService_FinalizeInvoice_FullMethodName, billingv1.BillingService_VoidInvoice_FullMethodName, billingv1.BillingService_GetInvoice_FullMethodName, billingv1.BillingService_ListInvoices_FullMethodName,
+		billingv1.BillingService_CreatePaymentAttempt_FullMethodName, billingv1.BillingService_ApplyPaymentResult_FullMethodName, billingv1.BillingService_RecordRefund_FullMethodName, billingv1.BillingService_ReconcilePayment_FullMethodName,
+		exportv1.ExportProviderService_DescribeDataset_FullMethodName, exportv1.ExportProviderService_StreamRows_FullMethodName,
+		importv1.ImportProviderService_DescribeImportDataset_FullMethodName, importv1.ImportProviderService_ValidateRows_FullMethodName, importv1.ImportProviderService_ApplyRows_FullMethodName,
 	}
-	if _, ok := billingRequirement("/platform.billing.v1.BillingService/GetInvoice"); ok {
-		t.Fatal("tenant-scoped reads are enforced in the domain layer")
+	for _, method := range methods {
+		requirement, ok := billingRequirement(method)
+		if !ok || requirement.Resource == "" || requirement.Action == "" || requirement.Scope != platformauthz.ScopePrincipal {
+			t.Fatalf("method %q requirement = %+v, %v", method, requirement, ok)
+		}
 	}
 }

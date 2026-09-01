@@ -250,14 +250,13 @@ func Authentication(service *auth.Service, logger *slog.Logger, cfg config.Auth)
 }
 
 func Authorization(authorizer platformauthz.Authorizer, logger *slog.Logger) gin.HandlerFunc {
-	actions := map[string]string{"/api/v1/plans/create": "create", "/api/v1/plans/update": "update", "/api/v1/plans/usage-prices/upsert": "update", "/api/v1/plans/usage-prices/delete": "delete"}
 	return func(c *gin.Context) {
-		action, protected := actions[c.FullPath()]
+		requirement, protected := billingHTTPRequirement(c.FullPath())
 		if !protected {
 			c.Next()
 			return
 		}
-		if err := platformauthz.Enforce(c.Request.Context(), authorizer, platformauthz.Requirement{Resource: "billing.plan", Action: action}); err != nil {
+		if err := platformauthz.Enforce(c.Request.Context(), authorizer, requirement); err != nil {
 			if errors.Is(err, platformauthz.ErrDecisionUnavailable) {
 				Fail(c, logger, apperror.Unavailable("authorization decision is unavailable", err))
 				return
@@ -267,6 +266,33 @@ func Authorization(authorizer platformauthz.Authorizer, logger *slog.Logger) gin
 		}
 		c.Next()
 	}
+}
+
+func billingHTTPRequirement(route string) (platformauthz.Requirement, bool) {
+	requirements := map[string]platformauthz.Requirement{
+		"/api/v1/plans/create":              {Resource: "billing.plan", Action: "create", Scope: platformauthz.ScopePrincipal},
+		"/api/v1/plans/update":              {Resource: "billing.plan", Action: "update", Scope: platformauthz.ScopePrincipal},
+		"/api/v1/plans/get":                 {Resource: "billing.plan", Action: "read", Scope: platformauthz.ScopePrincipal},
+		"/api/v1/plans/list":                {Resource: "billing.plan", Action: "list", Scope: platformauthz.ScopePrincipal},
+		"/api/v1/plans/usage-prices/upsert": {Resource: "billing.plan", Action: "update", Scope: platformauthz.ScopePrincipal},
+		"/api/v1/plans/usage-prices/delete": {Resource: "billing.plan", Action: "delete", Scope: platformauthz.ScopePrincipal},
+		"/api/v1/subscriptions/create":      {Resource: "billing.subscription", Action: "create", Scope: platformauthz.ScopePrincipal},
+		"/api/v1/subscriptions/change":      {Resource: "billing.subscription", Action: "update", Scope: platformauthz.ScopePrincipal},
+		"/api/v1/subscriptions/cancel":      {Resource: "billing.subscription", Action: "cancel", Scope: platformauthz.ScopePrincipal},
+		"/api/v1/subscriptions/get":         {Resource: "billing.subscription", Action: "read", Scope: platformauthz.ScopePrincipal},
+		"/api/v1/subscriptions/list":        {Resource: "billing.subscription", Action: "list", Scope: platformauthz.ScopePrincipal},
+		"/api/v1/invoices/preview":          {Resource: "billing.invoice", Action: "preview", Scope: platformauthz.ScopePrincipal},
+		"/api/v1/invoices/generate":         {Resource: "billing.invoice", Action: "generate", Scope: platformauthz.ScopePrincipal},
+		"/api/v1/invoices/finalize":         {Resource: "billing.invoice", Action: "finalize", Scope: platformauthz.ScopePrincipal},
+		"/api/v1/invoices/void":             {Resource: "billing.invoice", Action: "void", Scope: platformauthz.ScopePrincipal},
+		"/api/v1/invoices/get":              {Resource: "billing.invoice", Action: "read", Scope: platformauthz.ScopePrincipal},
+		"/api/v1/invoices/list":             {Resource: "billing.invoice", Action: "list", Scope: platformauthz.ScopePrincipal},
+		"/api/v1/payments/create-attempt":   {Resource: "billing.payment", Action: "create", Scope: platformauthz.ScopePrincipal},
+		"/api/v1/payments/apply-result":     {Resource: "billing.payment", Action: "apply_result", Scope: platformauthz.ScopePrincipal},
+		"/api/v1/payments/refunds/record":   {Resource: "billing.payment", Action: "refund", Scope: platformauthz.ScopePrincipal},
+	}
+	requirement, ok := requirements[route]
+	return requirement, ok
 }
 
 func requestID(c *gin.Context) string {
