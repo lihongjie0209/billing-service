@@ -17,6 +17,7 @@ import (
 	"github.com/lihongjie0209/billing-service/internal/app"
 	"github.com/lihongjie0209/billing-service/internal/auth"
 	"github.com/lihongjie0209/billing-service/internal/config"
+	authorizationv1 "github.com/lihongjie0209/platform-protos/gen/go/platform/authorization/v1"
 	billingv1 "github.com/lihongjie0209/platform-protos/gen/go/platform/billing/v1"
 	importv1 "github.com/lihongjie0209/platform-protos/gen/go/platform/import/v1"
 	goredis "github.com/redis/go-redis/v9"
@@ -62,6 +63,7 @@ func TestHTTPAndGRPCEndToEnd(t *testing.T) {
 
 	httpAddress := freeAddress(t)
 	grpcAddress := freeAddress(t)
+	authorizationAddress := startAllowAuthorizationServer(t)
 	const secret = "01234567890123456789012345678901"
 	cfg := config.Config{
 		Runtime:       config.Runtime{ActiveProfile: "integration"},
@@ -78,6 +80,9 @@ func TestHTTPAndGRPCEndToEnd(t *testing.T) {
 		Auth:          config.Auth{ClientID: "client", ClientSecret: "secret", SkipHTTPPaths: []string{"/api/v1/version"}, SkipGRPCMethods: []string{"/grpc.health.v1.Health/*"}, PSK: config.PSK{Enabled: true, Key: secret, GRPCMethods: []string{"/platform.billing.v1.BillingService/*", "/platform.import.v1.ImportProviderService/*"}}},
 		Cron:          config.Cron{Enabled: false, Timezone: "UTC"},
 		Idempotency:   config.Idempotency{Enabled: true, ProcessingTTL: 30 * time.Second, ResultTTL: time.Hour, FailureTTL: time.Minute},
+		Outbound: config.Outbound{GRPC: map[string]config.GRPCUpstream{
+			"authorization": {Target: authorizationAddress, Timeout: 2 * time.Second},
+		}},
 	}
 	application := app.New(cfg)
 	if err := application.Start(ctx); err != nil {
@@ -154,6 +159,32 @@ func TestHTTPAndGRPCEndToEnd(t *testing.T) {
 	if err != nil || plan.GetPlan().GetCode() != "integration-plan" {
 		t.Fatalf("imported plan=%v err=%v", plan, err)
 	}
+}
+
+type allowAuthorizationServer struct {
+	authorizationv1.UnimplementedAuthorizationServiceServer
+}
+
+func (allowAuthorizationServer) Check(context.Context, *authorizationv1.CheckRequest) (*authorizationv1.CheckResponse, error) {
+	return &authorizationv1.CheckResponse{Allowed: true, DecisionId: "integration-allow"}, nil
+}
+
+func startAllowAuthorizationServer(t *testing.T) string {
+	t.Helper()
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := grpc.NewServer()
+	authorizationv1.RegisterAuthorizationServiceServer(server, allowAuthorizationServer{})
+	go func() {
+		_ = server.Serve(listener)
+	}()
+	t.Cleanup(func() {
+		server.Stop()
+		_ = listener.Close()
+	})
+	return listener.Addr().String()
 }
 
 func freeAddress(t *testing.T) string {
