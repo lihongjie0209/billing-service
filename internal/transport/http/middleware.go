@@ -270,12 +270,12 @@ func Authorization(authorizer platformauthz.Authorizer, logger *slog.Logger) gin
 
 func billingHTTPRequirement(route string) (platformauthz.Requirement, bool) {
 	requirements := map[string]platformauthz.Requirement{
-		"/api/v1/plans/create":              {Resource: "billing.plan", Action: "create", Scope: platformauthz.ScopePrincipal},
-		"/api/v1/plans/update":              {Resource: "billing.plan", Action: "update", Scope: platformauthz.ScopePrincipal},
-		"/api/v1/plans/get":                 {Resource: "billing.plan", Action: "read", Scope: platformauthz.ScopePrincipal},
-		"/api/v1/plans/list":                {Resource: "billing.plan", Action: "list", Scope: platformauthz.ScopePrincipal},
-		"/api/v1/plans/usage-prices/upsert": {Resource: "billing.plan", Action: "update", Scope: platformauthz.ScopePrincipal},
-		"/api/v1/plans/usage-prices/delete": {Resource: "billing.plan", Action: "delete", Scope: platformauthz.ScopePrincipal},
+		"/api/v1/plans/create":              {Resource: "billing.plan", Action: "create", Scope: platformauthz.ScopePlatform},
+		"/api/v1/plans/update":              {Resource: "billing.plan", Action: "update", Scope: platformauthz.ScopePlatform},
+		"/api/v1/plans/get":                 {Resource: "billing.plan", Action: "read", Scope: platformauthz.ScopePlatform},
+		"/api/v1/plans/list":                {Resource: "billing.plan", Action: "list", Scope: platformauthz.ScopePlatform},
+		"/api/v1/plans/usage-prices/upsert": {Resource: "billing.plan", Action: "update", Scope: platformauthz.ScopePlatform},
+		"/api/v1/plans/usage-prices/delete": {Resource: "billing.plan", Action: "delete", Scope: platformauthz.ScopePlatform},
 		"/api/v1/subscriptions/create":      {Resource: "billing.subscription", Action: "create", Scope: platformauthz.ScopePrincipal},
 		"/api/v1/subscriptions/change":      {Resource: "billing.subscription", Action: "update", Scope: platformauthz.ScopePrincipal},
 		"/api/v1/subscriptions/cancel":      {Resource: "billing.subscription", Action: "cancel", Scope: platformauthz.ScopePrincipal},

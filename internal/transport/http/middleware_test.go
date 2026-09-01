@@ -55,8 +55,27 @@ func TestBillingHTTPRequirementCoversEveryBusinessRoute(t *testing.T) {
 	}
 	for _, route := range routes {
 		requirement, ok := billingHTTPRequirement(route)
-		if !ok || requirement.Resource == "" || requirement.Action == "" || requirement.Scope != platformauthz.ScopePrincipal {
+		if !ok || requirement.Resource == "" || requirement.Action == "" {
 			t.Fatalf("route %q requirement = %+v, %v", route, requirement, ok)
+		}
+	}
+}
+
+func TestBillingHTTPRequirementUsesResourceOwnershipScope(t *testing.T) {
+	t.Parallel()
+	for _, route := range []string{
+		"/api/v1/plans/create", "/api/v1/plans/update", "/api/v1/plans/get", "/api/v1/plans/list",
+		"/api/v1/plans/usage-prices/upsert", "/api/v1/plans/usage-prices/delete",
+	} {
+		requirement, ok := billingHTTPRequirement(route)
+		if !ok || requirement.Scope != platformauthz.ScopePlatform {
+			t.Fatalf("route %q scope = %q, want %q", route, requirement.Scope, platformauthz.ScopePlatform)
+		}
+	}
+	for _, route := range []string{"/api/v1/subscriptions/list", "/api/v1/invoices/list"} {
+		requirement, ok := billingHTTPRequirement(route)
+		if !ok || requirement.Scope != platformauthz.ScopePrincipal {
+			t.Fatalf("route %q scope = %q, want %q", route, requirement.Scope, platformauthz.ScopePrincipal)
 		}
 	}
 }

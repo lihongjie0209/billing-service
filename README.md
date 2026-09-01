@@ -9,7 +9,7 @@
 - 实现通用 Export Provider 的 `billing.invoices` 和 Import Provider 的 `billing.plans`；导入套餐先逐行规范化与校验，应用时以套餐 code 作为持久幂等边界。
 - `/live`、`/ready`、`/metrics`、受保护 Swagger/pprof 由公共脚手架能力提供。
 - JWT 由 identity-service 签发并通过 JWKS 校验；免认证与 PSK 路由均支持配置通配符。
-- 套餐和价格写操作通过 `platform-go/authz` 调用 authorization-service；租户资源在领域层再次校验 tenant scope。
+- 套餐和用量价格是平台全局目录，其创建、更新、查询和删除统一在 `__platform__` 范围授权；订阅、账单和支付仍按当前主体的租户与应用范围授权，并在领域层再次校验 tenant scope。
 
 OpenAPI UI 默认位于 `/swagger/index.html`。主要前端路由：
 

@@ -72,12 +72,12 @@ func NewServer(lc fx.Lifecycle, cfg config.Config, authService *auth.Service, au
 
 func billingRequirement(method string) (platformauthz.Requirement, bool) {
 	requirements := map[string]platformauthz.Requirement{
-		billingv1.BillingService_CreatePlan_FullMethodName:                  {Resource: "billing.plan", Action: "create", Scope: platformauthz.ScopePrincipal},
-		billingv1.BillingService_UpdatePlan_FullMethodName:                  {Resource: "billing.plan", Action: "update", Scope: platformauthz.ScopePrincipal},
-		billingv1.BillingService_GetPlan_FullMethodName:                     {Resource: "billing.plan", Action: "read", Scope: platformauthz.ScopePrincipal},
-		billingv1.BillingService_ListPlans_FullMethodName:                   {Resource: "billing.plan", Action: "list", Scope: platformauthz.ScopePrincipal},
-		billingv1.BillingService_UpsertUsagePrice_FullMethodName:            {Resource: "billing.plan", Action: "update", Scope: platformauthz.ScopePrincipal},
-		billingv1.BillingService_DeleteUsagePrice_FullMethodName:            {Resource: "billing.plan", Action: "delete", Scope: platformauthz.ScopePrincipal},
+		billingv1.BillingService_CreatePlan_FullMethodName:                  {Resource: "billing.plan", Action: "create", Scope: platformauthz.ScopePlatform},
+		billingv1.BillingService_UpdatePlan_FullMethodName:                  {Resource: "billing.plan", Action: "update", Scope: platformauthz.ScopePlatform},
+		billingv1.BillingService_GetPlan_FullMethodName:                     {Resource: "billing.plan", Action: "read", Scope: platformauthz.ScopePlatform},
+		billingv1.BillingService_ListPlans_FullMethodName:                   {Resource: "billing.plan", Action: "list", Scope: platformauthz.ScopePlatform},
+		billingv1.BillingService_UpsertUsagePrice_FullMethodName:            {Resource: "billing.plan", Action: "update", Scope: platformauthz.ScopePlatform},
+		billingv1.BillingService_DeleteUsagePrice_FullMethodName:            {Resource: "billing.plan", Action: "delete", Scope: platformauthz.ScopePlatform},
 		billingv1.BillingService_CreateSubscription_FullMethodName:          {Resource: "billing.subscription", Action: "create", Scope: platformauthz.ScopePrincipal},
 		billingv1.BillingService_ChangeSubscription_FullMethodName:          {Resource: "billing.subscription", Action: "update", Scope: platformauthz.ScopePrincipal},
 		billingv1.BillingService_CancelSubscription_FullMethodName:          {Resource: "billing.subscription", Action: "cancel", Scope: platformauthz.ScopePrincipal},

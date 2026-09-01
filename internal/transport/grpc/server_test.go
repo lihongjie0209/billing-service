@@ -98,8 +98,34 @@ func TestBillingRequirementCoversEveryBusinessMethod(t *testing.T) {
 	}
 	for _, method := range methods {
 		requirement, ok := billingRequirement(method)
-		if !ok || requirement.Resource == "" || requirement.Action == "" || requirement.Scope != platformauthz.ScopePrincipal {
+		if !ok || requirement.Resource == "" || requirement.Action == "" {
 			t.Fatalf("method %q requirement = %+v, %v", method, requirement, ok)
+		}
+	}
+}
+
+func TestBillingRequirementUsesResourceOwnershipScope(t *testing.T) {
+	t.Parallel()
+	for _, method := range []string{
+		billingv1.BillingService_CreatePlan_FullMethodName,
+		billingv1.BillingService_UpdatePlan_FullMethodName,
+		billingv1.BillingService_GetPlan_FullMethodName,
+		billingv1.BillingService_ListPlans_FullMethodName,
+		billingv1.BillingService_UpsertUsagePrice_FullMethodName,
+		billingv1.BillingService_DeleteUsagePrice_FullMethodName,
+	} {
+		requirement, ok := billingRequirement(method)
+		if !ok || requirement.Scope != platformauthz.ScopePlatform {
+			t.Fatalf("method %q scope = %q, want %q", method, requirement.Scope, platformauthz.ScopePlatform)
+		}
+	}
+	for _, method := range []string{
+		billingv1.BillingService_ListSubscriptions_FullMethodName,
+		billingv1.BillingService_ListInvoices_FullMethodName,
+	} {
+		requirement, ok := billingRequirement(method)
+		if !ok || requirement.Scope != platformauthz.ScopePrincipal {
+			t.Fatalf("method %q scope = %q, want %q", method, requirement.Scope, platformauthz.ScopePrincipal)
 		}
 	}
 }
