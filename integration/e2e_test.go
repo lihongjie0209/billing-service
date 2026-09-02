@@ -124,7 +124,7 @@ func TestHTTPAndGRPCEndToEnd(t *testing.T) {
 		t.Fatalf("PSK GetPlan must reach billing domain, got %v", err)
 	}
 	importClient := importv1.NewImportProviderServiceClient(connection)
-	descriptor, err := importClient.DescribeImportDataset(pskCtx, &importv1.DescribeImportDatasetRequest{TenantId: "tenant-1", DatasetCode: "billing.plans"})
+	descriptor, err := importClient.DescribeImportDataset(pskCtx, &importv1.DescribeImportDatasetRequest{TenantId: "tenant-1", ApplicationId: "application-1", DatasetCode: "billing.plans"})
 	if err != nil || descriptor.GetDataset().GetCode() != "billing.plans" {
 		t.Fatalf("import descriptor=%v err=%v", descriptor, err)
 	}
@@ -136,7 +136,7 @@ func TestHTTPAndGRPCEndToEnd(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := validation.Send(&importv1.ValidateRowsRequest{TenantId: "tenant-1", DatasetCode: "billing.plans", JobId: "job-1", BatchNumber: 1, FirstRowNumber: 2, Rows: []*structpb.Struct{row}}); err != nil {
+	if err := validation.Send(&importv1.ValidateRowsRequest{TenantId: "tenant-1", ApplicationId: "application-1", DatasetCode: "billing.plans", JobId: "job-1", BatchNumber: 1, FirstRowNumber: 2, Rows: []*structpb.Struct{row}}); err != nil {
 		t.Fatal(err)
 	}
 	validated, err := validation.Recv()
@@ -149,7 +149,7 @@ func TestHTTPAndGRPCEndToEnd(t *testing.T) {
 		t.Fatal(err)
 	}
 	for batch := int64(1); batch <= 2; batch++ {
-		if err := apply.Send(&importv1.ApplyRowsRequest{TenantId: "tenant-1", DatasetCode: "billing.plans", JobId: "job-1", BatchNumber: batch, IdempotencyKey: fmt.Sprintf("job-1:%d", batch), Rows: validated.GetNormalizedRows()}); err != nil {
+		if err := apply.Send(&importv1.ApplyRowsRequest{TenantId: "tenant-1", ApplicationId: "application-1", DatasetCode: "billing.plans", JobId: "job-1", BatchNumber: batch, IdempotencyKey: fmt.Sprintf("job-1:%d", batch), Rows: validated.GetNormalizedRows()}); err != nil {
 			t.Fatal(err)
 		}
 		applied, recvErr := apply.Recv()
