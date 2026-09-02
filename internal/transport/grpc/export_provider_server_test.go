@@ -7,6 +7,7 @@ import (
 
 	"github.com/lihongjie0209/billing-service/internal/billing"
 	platformprincipal "github.com/lihongjie0209/microservice-platform-go/principal"
+	exportv1 "github.com/lihongjie0209/platform-protos/gen/go/platform/export/v1"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -70,6 +71,19 @@ func TestParseInvoiceExportQueryUsesProtocolApplicationScope(t *testing.T) {
 	}
 }
 
+func TestDescribeInvoiceDatasetPublishesQuerySchema(t *testing.T) {
+	t.Parallel()
+	ctx := platformprincipal.WithContext(context.Background(), platformprincipal.Principal{ID: "export", Type: platformprincipal.TypeServiceAccount})
+	response, err := (&exportProviderServer{}).DescribeDataset(ctx, &exportv1.DescribeDatasetRequest{TenantId: "tenant-1", ApplicationId: "application-1", DatasetCode: invoiceDataset})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fields := response.GetDataset().GetQueryFields()
+	if len(fields) != 3 || fields[0].GetKey() != "status" || len(fields[0].GetOptions()) != 4 || fields[1].GetType() != "datetime" {
+		t.Fatalf("query fields = %+v", fields)
+	}
+}
+
 func TestParseInvoiceExportQueryRejectsMissingOrConflictingScope(t *testing.T) {
 	t.Parallel()
 	for _, test := range []struct {
@@ -80,6 +94,9 @@ func TestParseInvoiceExportQueryRejectsMissingOrConflictingScope(t *testing.T) {
 		{name: "missing top-level scope", raw: `{}`},
 		{name: "conflicting legacy scope", applicationID: "application-1", raw: `{"application_id":"application-2"}`},
 		{name: "non-object query", applicationID: "application-1", raw: `null`},
+		{name: "unknown field", applicationID: "application-1", raw: `{"secret":"x"}`},
+		{name: "invalid status", applicationID: "application-1", raw: `{"status":"unknown"}`},
+		{name: "wrong type", applicationID: "application-1", raw: `{"status":1}`},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()

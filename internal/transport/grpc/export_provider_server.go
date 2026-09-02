@@ -19,6 +19,12 @@ const invoiceDataset = "billing.invoices"
 
 var invoiceColumns = []*exportv1.ExportColumn{{Key: "id", Title: "ID", Type: "string"}, {Key: "number", Title: "Invoice number", Type: "string"}, {Key: "subscription_id", Title: "Subscription ID", Type: "string"}, {Key: "currency", Title: "Currency", Type: "string"}, {Key: "status", Title: "Status", Type: "string"}, {Key: "period_start", Title: "Period start", Type: "datetime", Format: time.RFC3339}, {Key: "period_end", Title: "Period end", Type: "datetime", Format: time.RFC3339}, {Key: "subtotal_minor", Title: "Subtotal minor", Type: "integer"}, {Key: "discount_minor", Title: "Discount minor", Type: "integer"}, {Key: "tax_minor", Title: "Tax minor", Type: "integer"}, {Key: "total_minor", Title: "Total minor", Type: "integer"}, {Key: "paid_minor", Title: "Paid minor", Type: "integer"}, {Key: "refunded_minor", Title: "Refunded minor", Type: "integer"}, {Key: "due_at", Title: "Due at", Type: "datetime", Format: time.RFC3339}, {Key: "created_at", Title: "Created at", Type: "datetime", Format: time.RFC3339}, {Key: "updated_at", Title: "Updated at", Type: "datetime", Format: time.RFC3339}, {Key: "version", Title: "Version", Type: "integer"}}
 
+var invoiceQueryFields = []*exportv1.ExportQueryField{
+	{Key: "status", Title: "Status", Type: "string", Options: []string{"draft", "open", "paid", "void"}, Description: "Exact invoice status"},
+	{Key: "created_from", Title: "Created from", Type: "datetime", Format: time.RFC3339},
+	{Key: "created_to", Title: "Created to", Type: "datetime", Format: time.RFC3339},
+}
+
 type exportProviderServer struct {
 	exportv1.UnimplementedExportProviderServiceServer
 	service *billing.Service
@@ -38,7 +44,7 @@ func (s *exportProviderServer) DescribeDataset(ctx context.Context, r *exportv1.
 	if r.GetDatasetCode() != invoiceDataset {
 		return nil, status.Error(codes.NotFound, "dataset not found")
 	}
-	return &exportv1.DescribeDatasetResponse{Dataset: &exportv1.DatasetDescriptor{Code: invoiceDataset, Title: "Billing invoices", Columns: invoiceColumns, Formats: []string{"csv", "jsonl", "xlsx"}, SupportsSnapshot: false}}, nil
+	return &exportv1.DescribeDatasetResponse{Dataset: &exportv1.DatasetDescriptor{Code: invoiceDataset, Title: "Billing invoices", Columns: invoiceColumns, QueryFields: invoiceQueryFields, Formats: []string{"csv", "jsonl", "xlsx"}, SupportsSnapshot: false}}, nil
 }
 func (s *exportProviderServer) StreamRows(r *exportv1.StreamRowsRequest, stream exportv1.ExportProviderService_StreamRowsServer) error {
 	if err := authorizeProviderScope(stream.Context(), r.GetTenantId(), r.GetApplicationId()); err != nil {
@@ -115,12 +121,24 @@ func parseInvoiceExportQuery(applicationID, raw string) (invoiceExportQuery, err
 	}
 	query := invoiceExportQuery{}
 	if raw != "" {
-		if err := json.Unmarshal([]byte(raw), &query); err != nil || strings.TrimSpace(raw) == "null" {
+		properties := map[string]json.RawMessage{}
+		if err := json.Unmarshal([]byte(raw), &properties); err != nil || strings.TrimSpace(raw) == "null" {
 			return invoiceExportQuery{}, status.Error(codes.InvalidArgument, "query_json must be an object")
+		}
+		for key := range properties {
+			if key != "application_id" && key != "status" && key != "created_from" && key != "created_to" {
+				return invoiceExportQuery{}, status.Errorf(codes.InvalidArgument, "query_json field %q is not supported", key)
+			}
+		}
+		if err := json.Unmarshal([]byte(raw), &query); err != nil {
+			return invoiceExportQuery{}, status.Error(codes.InvalidArgument, "query_json contains an invalid value")
 		}
 	}
 	if query.ApplicationID != "" && query.ApplicationID != applicationID {
 		return invoiceExportQuery{}, status.Error(codes.InvalidArgument, "query_json.application_id must match application_id")
+	}
+	if query.Status != "" && !map[string]bool{"draft": true, "open": true, "paid": true, "void": true}[query.Status] {
+		return invoiceExportQuery{}, status.Error(codes.InvalidArgument, "query_json.status is not supported")
 	}
 	return query, nil
 }
