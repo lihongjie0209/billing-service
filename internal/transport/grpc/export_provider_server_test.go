@@ -45,6 +45,19 @@ func TestAuthorizeExportTenant(t *testing.T) {
 	}
 }
 
+func TestAuthorizeProviderScopeRequiresTenantAndApplication(t *testing.T) {
+	t.Parallel()
+	service := platformprincipal.WithContext(context.Background(), platformprincipal.Principal{ID: "export", Type: platformprincipal.TypeServiceAccount})
+	if err := authorizeProviderScope(service, "tenant-1", "application-1"); err != nil {
+		t.Fatal(err)
+	}
+	for _, scope := range [][2]string{{"", "application-1"}, {"tenant-1", ""}} {
+		if err := authorizeProviderScope(service, scope[0], scope[1]); status.Code(err) != codes.InvalidArgument {
+			t.Fatalf("scope %q/%q status = %s, err = %v", scope[0], scope[1], status.Code(err), err)
+		}
+	}
+}
+
 func TestParseInvoiceExportQueryUsesProtocolApplicationScope(t *testing.T) {
 	t.Parallel()
 	query, err := parseInvoiceExportQuery("application-1", `{ "status": "open" }`)

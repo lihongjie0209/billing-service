@@ -32,7 +32,7 @@ type invoiceExportQuery struct {
 }
 
 func (s *exportProviderServer) DescribeDataset(ctx context.Context, r *exportv1.DescribeDatasetRequest) (*exportv1.DescribeDatasetResponse, error) {
-	if err := authorizeExportTenant(ctx, r.GetTenantId()); err != nil {
+	if err := authorizeProviderScope(ctx, r.GetTenantId(), r.GetApplicationId()); err != nil {
 		return nil, err
 	}
 	if r.GetDatasetCode() != invoiceDataset {
@@ -41,6 +41,9 @@ func (s *exportProviderServer) DescribeDataset(ctx context.Context, r *exportv1.
 	return &exportv1.DescribeDatasetResponse{Dataset: &exportv1.DatasetDescriptor{Code: invoiceDataset, Title: "Billing invoices", Columns: invoiceColumns, Formats: []string{"csv", "jsonl", "xlsx"}, SupportsSnapshot: false}}, nil
 }
 func (s *exportProviderServer) StreamRows(r *exportv1.StreamRowsRequest, stream exportv1.ExportProviderService_StreamRowsServer) error {
+	if err := authorizeProviderScope(stream.Context(), r.GetTenantId(), r.GetApplicationId()); err != nil {
+		return err
+	}
 	if r.GetDatasetCode() != invoiceDataset {
 		return status.Error(codes.NotFound, "dataset not found")
 	}
@@ -172,4 +175,11 @@ func authorizeExportTenant(ctx context.Context, tenantID string) error {
 		return status.Error(codes.PermissionDenied, "tenant access denied")
 	}
 	return nil
+}
+
+func authorizeProviderScope(ctx context.Context, tenantID, applicationID string) error {
+	if strings.TrimSpace(tenantID) == "" || strings.TrimSpace(applicationID) == "" {
+		return status.Error(codes.InvalidArgument, "tenant_id and application_id are required")
+	}
+	return authorizeExportTenant(ctx, tenantID)
 }

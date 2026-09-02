@@ -36,7 +36,7 @@ type importProviderServer struct {
 }
 
 func (s *importProviderServer) DescribeImportDataset(ctx context.Context, r *importv1.DescribeImportDatasetRequest) (*importv1.DescribeImportDatasetResponse, error) {
-	if err := authorizeExportTenant(ctx, r.GetTenantId()); err != nil {
+	if err := authorizeProviderScope(ctx, r.GetTenantId(), r.GetApplicationId()); err != nil {
 		return nil, err
 	}
 	if r.GetDatasetCode() != planImportDataset {
@@ -116,11 +116,11 @@ func (s *importProviderServer) ApplyRows(stream importv1.ImportProviderService_A
 }
 
 func validateImportStreamRequest(ctx context.Context, tenantID, applicationID, dataset, jobID string, tenant, application, job *string) error {
-	if err := authorizeExportTenant(ctx, tenantID); err != nil {
+	if err := authorizeProviderScope(ctx, tenantID, applicationID); err != nil {
 		return err
 	}
-	if strings.TrimSpace(applicationID) == "" || dataset != planImportDataset || strings.TrimSpace(jobID) == "" {
-		return status.Error(codes.InvalidArgument, "valid application_id, dataset_code and job_id are required")
+	if dataset != planImportDataset || strings.TrimSpace(jobID) == "" {
+		return status.Error(codes.InvalidArgument, "valid dataset_code and job_id are required")
 	}
 	if *tenant == "" {
 		*tenant, *application, *job = tenantID, applicationID, jobID
