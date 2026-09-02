@@ -29,13 +29,7 @@ func NewRegistry(lc fx.Lifecycle, cfg config.Config, metrics *observability.Metr
 		registry.http[name] = client
 	}
 	for name, upstream := range cfg.Outbound.GRPC {
-		clientCfg := grpcclient.Config{Name: name, Target: upstream.Target, Timeout: upstream.Timeout, Retry: upstream.Retry, Breaker: upstream.Breaker, Metrics: metrics, TLS: grpcclient.TLSConfig{Enabled: upstream.TLS.Enabled, ServerName: upstream.TLS.ServerName, CAFile: upstream.TLS.CAFile, CertFile: upstream.TLS.CertFile, KeyFile: upstream.TLS.KeyFile}}
-		switch upstream.Auth.Type {
-		case "bearer":
-			clientCfg.Token = upstream.Auth.Token
-		case "psk":
-			clientCfg.PSK = upstream.Auth.Token
-		}
+		clientCfg := newGRPCClientConfig(name, upstream, metrics)
 		connection, err := grpcclient.Dial(clientCfg)
 		if err != nil {
 			_ = registry.close()
@@ -45,6 +39,17 @@ func NewRegistry(lc fx.Lifecycle, cfg config.Config, metrics *observability.Metr
 	}
 	lc.Append(fx.StopHook(func(context.Context) error { return registry.close() }))
 	return registry, nil
+}
+
+func newGRPCClientConfig(name string, upstream config.GRPCUpstream, metrics *observability.Metrics) grpcclient.Config {
+	result := grpcclient.Config{Name: name, Target: upstream.Target, Timeout: upstream.Timeout, Retry: upstream.Retry, Breaker: upstream.Breaker, Metrics: metrics, TLS: grpcclient.TLSConfig{Enabled: upstream.TLS.Enabled, AllowInsecureToken: upstream.TLS.AllowInsecure, ServerName: upstream.TLS.ServerName, CAFile: upstream.TLS.CAFile, CertFile: upstream.TLS.CertFile, KeyFile: upstream.TLS.KeyFile}}
+	switch upstream.Auth.Type {
+	case "bearer":
+		result.Token = upstream.Auth.Token
+	case "psk":
+		result.PSK = upstream.Auth.Token
+	}
+	return result
 }
 
 func (r *Registry) HTTP(name string) (*HTTPClient, bool) {
