@@ -7,7 +7,7 @@ package httptransport
 // @Produce json
 // @Security Bearer
 // @Param request body createPlanRequest true "Plan"
-// @Success 200 {object} Response
+// @Success 200 {object} Response{body=PlanBody}
 // @Router /api/v1/plans/create [post]
 func createPlanDocs() {}
 
@@ -18,7 +18,7 @@ func createPlanDocs() {}
 // @Produce json
 // @Security Bearer
 // @Param request body updatePlanRequest true "Plan and current version"
-// @Success 200 {object} Response
+// @Success 200 {object} Response{body=PlanBody}
 // @Router /api/v1/plans/update [post]
 func updatePlanDocs() {}
 
@@ -29,7 +29,7 @@ func updatePlanDocs() {}
 // @Produce json
 // @Security Bearer
 // @Param request body getPlanRequest true "Plan identity"
-// @Success 200 {object} Response
+// @Success 200 {object} Response{body=PlanDetailBody}
 // @Router /api/v1/plans/get [post]
 func getPlanDocs() {}
 
@@ -40,7 +40,7 @@ func getPlanDocs() {}
 // @Produce json
 // @Security Bearer
 // @Param request body listPlansRequest true "Filters and pagination"
-// @Success 200 {object} Response
+// @Success 200 {object} Response{body=PlanPageBody}
 // @Router /api/v1/plans/list [post]
 func listPlansDocs() {}
 
@@ -51,7 +51,7 @@ func listPlansDocs() {}
 // @Produce json
 // @Security Bearer
 // @Param request body upsertUsagePriceRequest true "Usage price"
-// @Success 200 {object} Response
+// @Success 200 {object} Response{body=UsagePriceBody}
 // @Router /api/v1/plans/usage-prices/upsert [post]
 func upsertUsagePriceDocs() {}
 
@@ -73,7 +73,7 @@ func deleteUsagePriceDocs() {}
 // @Produce json
 // @Security Bearer
 // @Param request body createSubscriptionRequest true "Subscription"
-// @Success 200 {object} Response
+// @Success 200 {object} Response{body=SubscriptionBody}
 // @Router /api/v1/subscriptions/create [post]
 func createSubscriptionDocs() {}
 
@@ -84,7 +84,7 @@ func createSubscriptionDocs() {}
 // @Produce json
 // @Security Bearer
 // @Param request body changeSubscriptionRequest true "Plan change"
-// @Success 200 {object} Response
+// @Success 200 {object} Response{body=SubscriptionBody}
 // @Router /api/v1/subscriptions/change [post]
 func changeSubscriptionDocs() {}
 
@@ -95,7 +95,7 @@ func changeSubscriptionDocs() {}
 // @Produce json
 // @Security Bearer
 // @Param request body cancelSubscriptionRequest true "Cancellation"
-// @Success 200 {object} Response
+// @Success 200 {object} Response{body=SubscriptionBody}
 // @Router /api/v1/subscriptions/cancel [post]
 func cancelSubscriptionDocs() {}
 
@@ -106,7 +106,7 @@ func cancelSubscriptionDocs() {}
 // @Produce json
 // @Security Bearer
 // @Param request body getSubscriptionRequest true "Subscription identity"
-// @Success 200 {object} Response
+// @Success 200 {object} Response{body=SubscriptionDetailBody}
 // @Router /api/v1/subscriptions/get [post]
 func getSubscriptionDocs() {}
 
@@ -117,7 +117,7 @@ func getSubscriptionDocs() {}
 // @Produce json
 // @Security Bearer
 // @Param request body listSubscriptionsRequest true "Filters and pagination"
-// @Success 200 {object} Response
+// @Success 200 {object} Response{body=SubscriptionPageBody}
 // @Router /api/v1/subscriptions/list [post]
 func listSubscriptionsDocs() {}
 
@@ -128,7 +128,7 @@ func listSubscriptionsDocs() {}
 // @Produce json
 // @Security Bearer
 // @Param request body invoicePeriodRequest true "Invoice period"
-// @Success 200 {object} Response
+// @Success 200 {object} Response{body=InvoiceDetailBody}
 // @Router /api/v1/invoices/preview [post]
 func previewInvoiceDocs() {}
 
@@ -139,7 +139,7 @@ func previewInvoiceDocs() {}
 // @Produce json
 // @Security Bearer
 // @Param request body invoicePeriodRequest true "Invoice period and idempotency key"
-// @Success 200 {object} Response
+// @Success 200 {object} Response{body=GenerateInvoiceBody}
 // @Router /api/v1/invoices/generate [post]
 func generateInvoiceDocs() {}
 
@@ -150,7 +150,7 @@ func generateInvoiceDocs() {}
 // @Produce json
 // @Security Bearer
 // @Param request body finalizeInvoiceRequest true "Invoice and due date"
-// @Success 200 {object} Response
+// @Success 200 {object} Response{body=InvoiceBody}
 // @Router /api/v1/invoices/finalize [post]
 func finalizeInvoiceDocs() {}
 
@@ -161,7 +161,7 @@ func finalizeInvoiceDocs() {}
 // @Produce json
 // @Security Bearer
 // @Param request body voidInvoiceRequest true "Invoice and reason"
-// @Success 200 {object} Response
+// @Success 200 {object} Response{body=InvoiceBody}
 // @Router /api/v1/invoices/void [post]
 func voidInvoiceDocs() {}
 
@@ -172,7 +172,7 @@ func voidInvoiceDocs() {}
 // @Produce json
 // @Security Bearer
 // @Param request body idVersionRequest true "Invoice identity"
-// @Success 200 {object} Response
+// @Success 200 {object} Response{body=InvoiceDetailBody}
 // @Router /api/v1/invoices/get [post]
 func getInvoiceDocs() {}
 
@@ -183,7 +183,7 @@ func getInvoiceDocs() {}
 // @Produce json
 // @Security Bearer
 // @Param request body listInvoicesRequest true "Filters and pagination"
-// @Success 200 {object} Response
+// @Success 200 {object} Response{body=InvoicePageBody}
 // @Router /api/v1/invoices/list [post]
 func listInvoicesDocs() {}
 
@@ -194,7 +194,7 @@ func listInvoicesDocs() {}
 // @Produce json
 // @Security Bearer
 // @Param request body createPaymentRequest true "Payment"
-// @Success 200 {object} Response
+// @Success 200 {object} Response{body=CreatePaymentAttemptBody}
 // @Router /api/v1/payments/create-attempt [post]
 func createPaymentDocs() {}
 
@@ -205,7 +205,7 @@ func createPaymentDocs() {}
 // @Produce json
 // @Security Bearer
 // @Param request body listPaymentsRequest true "Filters and pagination"
-// @Success 200 {object} Response
+// @Success 200 {object} Response{body=PaymentAttemptPageBody}
 // @Router /api/v1/payments/list [post]
 func listPaymentsDocs() {}
 
@@ -216,7 +216,7 @@ func listPaymentsDocs() {}
 // @Produce json
 // @Security PSK
 // @Param request body applyPaymentRequest true "Provider result"
-// @Success 200 {object} Response
+// @Success 200 {object} Response{body=ApplyPaymentResultBody}
 // @Router /api/v1/payments/apply-result [post]
 func applyPaymentDocs() {}
 
@@ -227,7 +227,7 @@ func applyPaymentDocs() {}
 // @Produce json
 // @Security Bearer
 // @Param request body recordRefundRequest true "Refund"
-// @Success 200 {object} Response
+// @Success 200 {object} Response{body=RecordRefundBody}
 // @Router /api/v1/payments/refunds/record [post]
 func recordRefundDocs() {}
 
@@ -238,7 +238,7 @@ func recordRefundDocs() {}
 // @Produce json
 // @Security Bearer
 // @Param request body listPaymentsRequest true "Filters and pagination"
-// @Success 200 {object} Response
+// @Success 200 {object} Response{body=RefundPageBody}
 // @Router /api/v1/payments/refunds/list [post]
 func listRefundsDocs() {}
 

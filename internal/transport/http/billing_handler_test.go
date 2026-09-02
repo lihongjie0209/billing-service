@@ -10,13 +10,13 @@ import (
 func TestBillingTransportEmitsStructuredJSON(t *testing.T) {
 	t.Parallel()
 	value := struct {
-		Plan  planView          `json:"plan"`
-		Price usagePriceView    `json:"price"`
-		Lines []invoiceLineView `json:"lines"`
+		Plan  PlanBody          `json:"plan"`
+		Price UsagePriceBody    `json:"price"`
+		Lines []InvoiceLineBody `json:"lines"`
 	}{
-		Plan:  toPlanView(billing.Plan{EntitlementsJSON: `{"seats":10}`}),
-		Price: toUsagePriceView(billing.UsagePrice{TiersJSON: `[{"up_to":100}]`}),
-		Lines: toInvoiceLineViews([]billing.InvoiceLine{{MetadataJSON: `{"source":"usage"}`}}),
+		Plan:  planBody(billing.Plan{EntitlementsJSON: `{"seats":10}`}),
+		Price: usagePriceBody(billing.UsagePrice{TiersJSON: `[{"up_to":100}]`}),
+		Lines: mapBodies([]billing.InvoiceLine{{MetadataJSON: `{"source":"usage"}`}}, invoiceLineBody),
 	}
 	encoded, err := json.Marshal(value)
 	if err != nil {

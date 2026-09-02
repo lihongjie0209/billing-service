@@ -160,21 +160,6 @@ type listPaymentsRequest struct {
 	pageRequest
 }
 
-type planView struct {
-	billing.Plan
-	EntitlementsJSON json.RawMessage `json:"entitlements_json" swaggertype:"object"`
-}
-
-type usagePriceView struct {
-	billing.UsagePrice
-	TiersJSON json.RawMessage `json:"tiers_json" swaggertype:"array,object"`
-}
-
-type invoiceLineView struct {
-	billing.InvoiceLine
-	MetadataJSON json.RawMessage `json:"metadata_json" swaggertype:"object"`
-}
-
 func registerBillingRoutes(api *gin.RouterGroup, h *Handler) {
 	for path, handler := range map[string]gin.HandlerFunc{
 		"/plans/create": h.CreatePlan, "/plans/update": h.UpdatePlan, "/plans/get": h.GetPlan, "/plans/list": h.ListPlans,
@@ -210,7 +195,7 @@ func (h *Handler) CreatePlan(c *gin.Context) {
 		return
 	}
 	v, e := h.billing.CreatePlan(c.Request.Context(), billing.Plan{Code: r.Code, Name: r.Name, Description: r.Description, Currency: r.Currency, BillingInterval: r.BillingInterval, BaseAmountMinor: r.BaseAmountMinor, TrialDays: r.TrialDays, EntitlementsJSON: string(rawObject(r.EntitlementsJSON))})
-	result(h, c, toPlanView(v), e)
+	result(h, c, planBody(v), e)
 }
 func (h *Handler) UpdatePlan(c *gin.Context) {
 	r, ok := decode[updatePlanRequest](h, c)
@@ -218,7 +203,7 @@ func (h *Handler) UpdatePlan(c *gin.Context) {
 		return
 	}
 	v, e := h.billing.UpdatePlan(c.Request.Context(), billing.Plan{ID: r.ID, Name: r.Name, Description: r.Description, BaseAmountMinor: r.BaseAmountMinor, TrialDays: r.TrialDays, Status: r.Status, EntitlementsJSON: string(rawObject(r.EntitlementsJSON))}, r.Version)
-	result(h, c, toPlanView(v), e)
+	result(h, c, planBody(v), e)
 }
 func (h *Handler) GetPlan(c *gin.Context) {
 	r, ok := decode[getPlanRequest](h, c)
@@ -226,7 +211,7 @@ func (h *Handler) GetPlan(c *gin.Context) {
 		return
 	}
 	v, p, e := h.billing.GetPlan(c.Request.Context(), r.ID, r.Code)
-	result(h, c, gin.H{"plan": toPlanView(v), "usage_prices": toUsagePriceViews(p)}, e)
+	result(h, c, PlanDetailBody{Plan: planBody(v), UsagePrices: mapBodies(p, usagePriceBody)}, e)
 }
 func (h *Handler) ListPlans(c *gin.Context) {
 	r, ok := decode[listPlansRequest](h, c)
@@ -234,7 +219,7 @@ func (h *Handler) ListPlans(c *gin.Context) {
 		return
 	}
 	v, e := h.billing.ListPlans(c.Request.Context(), r.Status, r.Keyword, r.Page, r.PageSize)
-	result(h, c, billing.Page[planView]{Items: toPlanViews(v.Items), Total: v.Total, Page: v.Page, PageSize: v.PageSize}, e)
+	result(h, c, planPage(v), e)
 }
 func (h *Handler) UpsertUsagePrice(c *gin.Context) {
 	r, ok := decode[upsertUsagePriceRequest](h, c)
@@ -242,7 +227,7 @@ func (h *Handler) UpsertUsagePrice(c *gin.Context) {
 		return
 	}
 	v, e := h.billing.UpsertUsagePrice(c.Request.Context(), billing.UsagePrice{ID: r.ID, PlanID: r.PlanID, MeterCode: r.MeterCode, IncludedQuantity: r.IncludedQuantity, UnitQuantity: r.UnitQuantity, UnitAmountMinor: r.UnitAmountMinor, PricingModel: r.PricingModel, TiersJSON: string(rawArray(r.TiersJSON))}, r.ExpectedVersion)
-	result(h, c, toUsagePriceView(v), e)
+	result(h, c, usagePriceBody(v), e)
 }
 func (h *Handler) DeleteUsagePrice(c *gin.Context) {
 	r, ok := decode[idVersionRequest](h, c)
@@ -258,7 +243,7 @@ func (h *Handler) CreateSubscription(c *gin.Context) {
 		return
 	}
 	v, e := h.billing.CreateSubscription(c.Request.Context(), r.TenantID, r.ApplicationID, r.PlanID, r.StartsAt, r.ExternalReference)
-	result(h, c, v, e)
+	result(h, c, subscriptionBody(v), e)
 }
 func (h *Handler) ChangeSubscription(c *gin.Context) {
 	r, ok := decode[changeSubscriptionRequest](h, c)
@@ -266,7 +251,7 @@ func (h *Handler) ChangeSubscription(c *gin.Context) {
 		return
 	}
 	v, e := h.billing.ChangeSubscription(c.Request.Context(), r.TenantID, r.ApplicationID, r.ID, r.PlanID, r.EffectiveMode, r.Version)
-	result(h, c, v, e)
+	result(h, c, subscriptionBody(v), e)
 }
 func (h *Handler) CancelSubscription(c *gin.Context) {
 	r, ok := decode[cancelSubscriptionRequest](h, c)
@@ -274,7 +259,7 @@ func (h *Handler) CancelSubscription(c *gin.Context) {
 		return
 	}
 	v, e := h.billing.CancelSubscription(c.Request.Context(), r.TenantID, r.ApplicationID, r.ID, r.AtPeriodEnd, r.Version)
-	result(h, c, v, e)
+	result(h, c, subscriptionBody(v), e)
 }
 func (h *Handler) GetSubscription(c *gin.Context) {
 	r, ok := decode[getSubscriptionRequest](h, c)
@@ -282,7 +267,7 @@ func (h *Handler) GetSubscription(c *gin.Context) {
 		return
 	}
 	v, p, e := h.billing.GetSubscription(c.Request.Context(), r.TenantID, r.ApplicationID, r.ID)
-	result(h, c, gin.H{"subscription": v, "plan": toPlanView(p)}, e)
+	result(h, c, SubscriptionDetailBody{Subscription: subscriptionBody(v), Plan: planBody(p)}, e)
 }
 func (h *Handler) ListSubscriptions(c *gin.Context) {
 	r, ok := decode[listSubscriptionsRequest](h, c)
@@ -290,7 +275,7 @@ func (h *Handler) ListSubscriptions(c *gin.Context) {
 		return
 	}
 	v, e := h.billing.ListSubscriptions(c.Request.Context(), r.TenantID, r.ApplicationID, r.Status, r.Page, r.PageSize)
-	result(h, c, v, e)
+	result(h, c, subscriptionPage(v), e)
 }
 func (h *Handler) PreviewInvoice(c *gin.Context) {
 	r, ok := decode[invoicePeriodRequest](h, c)
@@ -298,7 +283,7 @@ func (h *Handler) PreviewInvoice(c *gin.Context) {
 		return
 	}
 	v, e := h.billing.PreviewInvoice(c.Request.Context(), r.TenantID, r.ApplicationID, r.SubscriptionID, r.PeriodStart, r.PeriodEnd)
-	result(h, c, invoicePreviewView(v), e)
+	result(h, c, InvoiceDetailBody{Invoice: invoiceBody(v.Invoice), Lines: mapBodies(v.Lines, invoiceLineBody)}, e)
 }
 func (h *Handler) GenerateInvoice(c *gin.Context) {
 	r, ok := decode[invoicePeriodRequest](h, c)
@@ -306,7 +291,7 @@ func (h *Handler) GenerateInvoice(c *gin.Context) {
 		return
 	}
 	v, d, e := h.billing.GenerateInvoice(c.Request.Context(), r.TenantID, r.ApplicationID, r.SubscriptionID, r.PeriodStart, r.PeriodEnd, r.IdempotencyKey)
-	result(h, c, gin.H{"invoice": v.Invoice, "lines": toInvoiceLineViews(v.Lines), "duplicate": d}, e)
+	result(h, c, GenerateInvoiceBody{Invoice: invoiceBody(v.Invoice), Lines: mapBodies(v.Lines, invoiceLineBody), Duplicate: d}, e)
 }
 func (h *Handler) FinalizeInvoice(c *gin.Context) {
 	r, ok := decode[finalizeInvoiceRequest](h, c)
@@ -314,7 +299,7 @@ func (h *Handler) FinalizeInvoice(c *gin.Context) {
 		return
 	}
 	v, e := h.billing.FinalizeInvoice(c.Request.Context(), r.TenantID, r.ApplicationID, r.ID, r.DueAt, r.Version)
-	result(h, c, v, e)
+	result(h, c, invoiceBody(v), e)
 }
 func (h *Handler) VoidInvoice(c *gin.Context) {
 	r, ok := decode[voidInvoiceRequest](h, c)
@@ -322,7 +307,7 @@ func (h *Handler) VoidInvoice(c *gin.Context) {
 		return
 	}
 	v, e := h.billing.VoidInvoice(c.Request.Context(), r.TenantID, r.ApplicationID, r.ID, r.Reason, r.Version)
-	result(h, c, v, e)
+	result(h, c, invoiceBody(v), e)
 }
 func (h *Handler) GetInvoice(c *gin.Context) {
 	r, ok := decode[getInvoiceRequest](h, c)
@@ -330,7 +315,7 @@ func (h *Handler) GetInvoice(c *gin.Context) {
 		return
 	}
 	v, l, e := h.billing.GetInvoice(c.Request.Context(), r.TenantID, r.ApplicationID, r.ID)
-	result(h, c, gin.H{"invoice": v, "lines": toInvoiceLineViews(l)}, e)
+	result(h, c, InvoiceDetailBody{Invoice: invoiceBody(v), Lines: mapBodies(l, invoiceLineBody)}, e)
 }
 
 func rawObject(value json.RawMessage) json.RawMessage { return rawJSON(value, `{}`) }
@@ -349,48 +334,13 @@ func rawJSON(value json.RawMessage, fallback string) json.RawMessage {
 	return json.RawMessage(fallback)
 }
 
-func toPlanView(value billing.Plan) planView {
-	return planView{Plan: value, EntitlementsJSON: rawObject(json.RawMessage(value.EntitlementsJSON))}
-}
-
-func toPlanViews(values []billing.Plan) []planView {
-	result := make([]planView, 0, len(values))
-	for _, value := range values {
-		result = append(result, toPlanView(value))
-	}
-	return result
-}
-
-func toUsagePriceView(value billing.UsagePrice) usagePriceView {
-	return usagePriceView{UsagePrice: value, TiersJSON: rawArray(json.RawMessage(value.TiersJSON))}
-}
-
-func toUsagePriceViews(values []billing.UsagePrice) []usagePriceView {
-	result := make([]usagePriceView, 0, len(values))
-	for _, value := range values {
-		result = append(result, toUsagePriceView(value))
-	}
-	return result
-}
-
-func toInvoiceLineViews(values []billing.InvoiceLine) []invoiceLineView {
-	result := make([]invoiceLineView, 0, len(values))
-	for _, value := range values {
-		result = append(result, invoiceLineView{InvoiceLine: value, MetadataJSON: rawObject(json.RawMessage(value.MetadataJSON))})
-	}
-	return result
-}
-
-func invoicePreviewView(value billing.InvoicePreview) gin.H {
-	return gin.H{"invoice": value.Invoice, "lines": toInvoiceLineViews(value.Lines)}
-}
 func (h *Handler) ListInvoices(c *gin.Context) {
 	r, ok := decode[listInvoicesRequest](h, c)
 	if !ok {
 		return
 	}
 	v, e := h.billing.ListInvoices(c.Request.Context(), r.TenantID, r.ApplicationID, r.Status, r.CreatedFrom, r.CreatedTo, r.Page, r.PageSize)
-	result(h, c, v, e)
+	result(h, c, invoicePage(v), e)
 }
 func (h *Handler) CreatePaymentAttempt(c *gin.Context) {
 	r, ok := decode[createPaymentRequest](h, c)
@@ -398,7 +348,7 @@ func (h *Handler) CreatePaymentAttempt(c *gin.Context) {
 		return
 	}
 	v, d, e := h.billing.CreatePaymentAttempt(c.Request.Context(), r.TenantID, r.ApplicationID, r.InvoiceID, r.Provider, r.PaymentMethodReference, r.IdempotencyKey)
-	result(h, c, gin.H{"payment_attempt": v, "duplicate": d}, e)
+	result(h, c, CreatePaymentAttemptBody{PaymentAttempt: paymentAttemptBody(v), Duplicate: d}, e)
 }
 func (h *Handler) ListPayments(c *gin.Context) {
 	r, ok := decode[listPaymentsRequest](h, c)
@@ -406,7 +356,7 @@ func (h *Handler) ListPayments(c *gin.Context) {
 		return
 	}
 	v, e := h.billing.ListPayments(c.Request.Context(), r.TenantID, r.ApplicationID, r.Status, r.Page, r.PageSize)
-	result(h, c, v, e)
+	result(h, c, paymentAttemptPage(v), e)
 }
 func (h *Handler) ApplyPaymentResult(c *gin.Context) {
 	r, ok := decode[applyPaymentRequest](h, c)
@@ -414,7 +364,7 @@ func (h *Handler) ApplyPaymentResult(c *gin.Context) {
 		return
 	}
 	p, i, d, e := h.billing.ApplyPaymentResult(c.Request.Context(), r.PaymentAttemptID, r.ProviderPaymentID, r.ProviderEventID, r.Status, r.FailureCode, r.FailureMessage, r.ProcessedAt)
-	result(h, c, gin.H{"payment_attempt": p, "invoice": i, "duplicate": d}, e)
+	result(h, c, ApplyPaymentResultBody{PaymentAttempt: paymentAttemptBody(p), Invoice: invoiceBody(i), Duplicate: d}, e)
 }
 func (h *Handler) RecordRefund(c *gin.Context) {
 	r, ok := decode[recordRefundRequest](h, c)
@@ -422,7 +372,7 @@ func (h *Handler) RecordRefund(c *gin.Context) {
 		return
 	}
 	v, i, d, e := h.billing.RecordRefund(c.Request.Context(), r.TenantID, r.ApplicationID, r.PaymentAttemptID, r.ProviderRefundID, r.IdempotencyKey, r.AmountMinor, r.Reason, r.Status)
-	result(h, c, gin.H{"refund": v, "invoice": i, "duplicate": d}, e)
+	result(h, c, RecordRefundBody{Refund: refundBody(v), Invoice: invoiceBody(i), Duplicate: d}, e)
 }
 func (h *Handler) ListRefunds(c *gin.Context) {
 	r, ok := decode[listPaymentsRequest](h, c)
@@ -430,5 +380,5 @@ func (h *Handler) ListRefunds(c *gin.Context) {
 		return
 	}
 	v, e := h.billing.ListRefunds(c.Request.Context(), r.TenantID, r.ApplicationID, r.Status, r.Page, r.PageSize)
-	result(h, c, v, e)
+	result(h, c, refundPage(v), e)
 }

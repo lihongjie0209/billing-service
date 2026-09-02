@@ -29,10 +29,299 @@ definitions:
       status:
         type: string
     type: object
+  httptransport.ApplyPaymentResultBody:
+    properties:
+      duplicate:
+        type: boolean
+      invoice:
+        $ref: '#/definitions/httptransport.InvoiceBody'
+      payment_attempt:
+        $ref: '#/definitions/httptransport.PaymentAttemptBody'
+    type: object
+  httptransport.CreatePaymentAttemptBody:
+    properties:
+      duplicate:
+        type: boolean
+      payment_attempt:
+        $ref: '#/definitions/httptransport.PaymentAttemptBody'
+    type: object
+  httptransport.GenerateInvoiceBody:
+    properties:
+      duplicate:
+        type: boolean
+      invoice:
+        $ref: '#/definitions/httptransport.InvoiceBody'
+      lines:
+        items:
+          $ref: '#/definitions/httptransport.InvoiceLineBody'
+        type: array
+    type: object
+  httptransport.InvoiceBody:
+    properties:
+      application_id:
+        type: string
+      created_at:
+        type: string
+      created_by:
+        type: string
+      currency:
+        type: string
+      discount_minor:
+        type: integer
+      due_at:
+        type: string
+      finalized_at:
+        type: string
+      id:
+        type: string
+      number:
+        type: string
+      paid_at:
+        type: string
+      paid_minor:
+        type: integer
+      period_end:
+        type: string
+      period_start:
+        type: string
+      refunded_minor:
+        type: integer
+      status:
+        type: string
+      subscription_id:
+        type: string
+      subtotal_minor:
+        type: integer
+      tax_minor:
+        type: integer
+      tenant_id:
+        type: string
+      total_minor:
+        type: integer
+      updated_at:
+        type: string
+      updated_by:
+        type: string
+      version:
+        type: integer
+    type: object
+  httptransport.InvoiceDetailBody:
+    properties:
+      invoice:
+        $ref: '#/definitions/httptransport.InvoiceBody'
+      lines:
+        items:
+          $ref: '#/definitions/httptransport.InvoiceLineBody'
+        type: array
+    type: object
+  httptransport.InvoiceLineBody:
+    properties:
+      amount_minor:
+        type: integer
+      created_at:
+        type: string
+      created_by:
+        type: string
+      description:
+        type: string
+      id:
+        type: string
+      invoice_id:
+        type: string
+      metadata_json:
+        type: object
+      meter_code:
+        type: string
+      quantity:
+        type: integer
+      type:
+        type: string
+      unit_amount_minor:
+        type: integer
+      unit_quantity:
+        type: integer
+      updated_at:
+        type: string
+      updated_by:
+        type: string
+      version:
+        type: integer
+    type: object
+  httptransport.InvoicePageBody:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/httptransport.InvoiceBody'
+        type: array
+      page:
+        type: integer
+      page_size:
+        type: integer
+      total:
+        type: integer
+    type: object
   httptransport.MeResponseBody:
     properties:
       subject:
         type: string
+    type: object
+  httptransport.PaymentAttemptBody:
+    properties:
+      amount_minor:
+        type: integer
+      application_id:
+        type: string
+      created_at:
+        type: string
+      created_by:
+        type: string
+      currency:
+        type: string
+      failure_code:
+        type: string
+      failure_message:
+        type: string
+      id:
+        type: string
+      invoice_id:
+        type: string
+      processed_at:
+        type: string
+      provider:
+        type: string
+      provider_payment_id:
+        type: string
+      status:
+        type: string
+      tenant_id:
+        type: string
+      updated_at:
+        type: string
+      updated_by:
+        type: string
+      version:
+        type: integer
+    type: object
+  httptransport.PaymentAttemptPageBody:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/httptransport.PaymentAttemptBody'
+        type: array
+      page:
+        type: integer
+      page_size:
+        type: integer
+      total:
+        type: integer
+    type: object
+  httptransport.PlanBody:
+    properties:
+      base_amount_minor:
+        type: integer
+      billing_interval:
+        type: string
+      code:
+        type: string
+      created_at:
+        type: string
+      created_by:
+        type: string
+      currency:
+        type: string
+      description:
+        type: string
+      entitlements_json:
+        type: object
+      id:
+        type: string
+      name:
+        type: string
+      status:
+        type: string
+      trial_days:
+        type: integer
+      updated_at:
+        type: string
+      updated_by:
+        type: string
+      version:
+        type: integer
+    type: object
+  httptransport.PlanDetailBody:
+    properties:
+      plan:
+        $ref: '#/definitions/httptransport.PlanBody'
+      usage_prices:
+        items:
+          $ref: '#/definitions/httptransport.UsagePriceBody'
+        type: array
+    type: object
+  httptransport.PlanPageBody:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/httptransport.PlanBody'
+        type: array
+      page:
+        type: integer
+      page_size:
+        type: integer
+      total:
+        type: integer
+    type: object
+  httptransport.RecordRefundBody:
+    properties:
+      duplicate:
+        type: boolean
+      invoice:
+        $ref: '#/definitions/httptransport.InvoiceBody'
+      refund:
+        $ref: '#/definitions/httptransport.RefundBody'
+    type: object
+  httptransport.RefundBody:
+    properties:
+      amount_minor:
+        type: integer
+      application_id:
+        type: string
+      created_at:
+        type: string
+      created_by:
+        type: string
+      id:
+        type: string
+      invoice_id:
+        type: string
+      payment_attempt_id:
+        type: string
+      provider_refund_id:
+        type: string
+      reason:
+        type: string
+      status:
+        type: string
+      tenant_id:
+        type: string
+      updated_at:
+        type: string
+      updated_by:
+        type: string
+      version:
+        type: integer
+    type: object
+  httptransport.RefundPageBody:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/httptransport.RefundBody'
+        type: array
+      page:
+        type: integer
+      page_size:
+        type: integer
+      total:
+        type: integer
     type: object
   httptransport.Response:
     properties:
@@ -43,6 +332,94 @@ definitions:
         type: string
       request_id:
         type: string
+    type: object
+  httptransport.SubscriptionBody:
+    properties:
+      application_id:
+        type: string
+      cancel_at_period_end:
+        type: boolean
+      canceled_at:
+        type: string
+      created_at:
+        type: string
+      created_by:
+        type: string
+      current_period_end:
+        type: string
+      current_period_start:
+        type: string
+      external_reference:
+        type: string
+      id:
+        type: string
+      pending_change_at:
+        type: string
+      pending_plan_id:
+        type: string
+      plan_id:
+        type: string
+      status:
+        type: string
+      tenant_id:
+        type: string
+      updated_at:
+        type: string
+      updated_by:
+        type: string
+      version:
+        type: integer
+    type: object
+  httptransport.SubscriptionDetailBody:
+    properties:
+      plan:
+        $ref: '#/definitions/httptransport.PlanBody'
+      subscription:
+        $ref: '#/definitions/httptransport.SubscriptionBody'
+    type: object
+  httptransport.SubscriptionPageBody:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/httptransport.SubscriptionBody'
+        type: array
+      page:
+        type: integer
+      page_size:
+        type: integer
+      total:
+        type: integer
+    type: object
+  httptransport.UsagePriceBody:
+    properties:
+      created_at:
+        type: string
+      created_by:
+        type: string
+      id:
+        type: string
+      included_quantity:
+        type: integer
+      meter_code:
+        type: string
+      plan_id:
+        type: string
+      pricing_model:
+        type: string
+      tiers_json:
+        items:
+          type: object
+        type: array
+      unit_amount_minor:
+        type: integer
+      unit_quantity:
+        type: integer
+      updated_at:
+        type: string
+      updated_by:
+        type: string
+      version:
+        type: integer
     type: object
   httptransport.applyPaymentRequest:
     properties:
@@ -367,7 +744,12 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/httptransport.Response'
+            allOf:
+            - $ref: '#/definitions/httptransport.Response'
+            - properties:
+                body:
+                  $ref: '#/definitions/httptransport.InvoiceBody'
+              type: object
       security:
       - Bearer: []
       summary: Finalize a draft invoice
@@ -390,7 +772,12 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/httptransport.Response'
+            allOf:
+            - $ref: '#/definitions/httptransport.Response'
+            - properties:
+                body:
+                  $ref: '#/definitions/httptransport.GenerateInvoiceBody'
+              type: object
       security:
       - Bearer: []
       summary: Generate an idempotent invoice
@@ -413,7 +800,12 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/httptransport.Response'
+            allOf:
+            - $ref: '#/definitions/httptransport.Response'
+            - properties:
+                body:
+                  $ref: '#/definitions/httptransport.InvoiceDetailBody'
+              type: object
       security:
       - Bearer: []
       summary: Get an invoice and line items
@@ -436,7 +828,12 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/httptransport.Response'
+            allOf:
+            - $ref: '#/definitions/httptransport.Response'
+            - properties:
+                body:
+                  $ref: '#/definitions/httptransport.InvoicePageBody'
+              type: object
       security:
       - Bearer: []
       summary: Search tenant invoices
@@ -459,7 +856,12 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/httptransport.Response'
+            allOf:
+            - $ref: '#/definitions/httptransport.Response'
+            - properties:
+                body:
+                  $ref: '#/definitions/httptransport.InvoiceDetailBody'
+              type: object
       security:
       - Bearer: []
       summary: Preview an invoice using metering totals
@@ -482,7 +884,12 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/httptransport.Response'
+            allOf:
+            - $ref: '#/definitions/httptransport.Response'
+            - properties:
+                body:
+                  $ref: '#/definitions/httptransport.InvoiceBody'
+              type: object
       security:
       - Bearer: []
       summary: Void an unpaid invoice
@@ -528,7 +935,12 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/httptransport.Response'
+            allOf:
+            - $ref: '#/definitions/httptransport.Response'
+            - properties:
+                body:
+                  $ref: '#/definitions/httptransport.ApplyPaymentResultBody'
+              type: object
       security:
       - PSK: []
       summary: Apply an idempotent payment-provider result
@@ -551,7 +963,12 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/httptransport.Response'
+            allOf:
+            - $ref: '#/definitions/httptransport.Response'
+            - properties:
+                body:
+                  $ref: '#/definitions/httptransport.CreatePaymentAttemptBody'
+              type: object
       security:
       - Bearer: []
       summary: Create an idempotent payment attempt
@@ -574,7 +991,12 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/httptransport.Response'
+            allOf:
+            - $ref: '#/definitions/httptransport.Response'
+            - properties:
+                body:
+                  $ref: '#/definitions/httptransport.PaymentAttemptPageBody'
+              type: object
       security:
       - Bearer: []
       summary: List application payment attempts
@@ -597,7 +1019,12 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/httptransport.Response'
+            allOf:
+            - $ref: '#/definitions/httptransport.Response'
+            - properties:
+                body:
+                  $ref: '#/definitions/httptransport.RefundPageBody'
+              type: object
       security:
       - Bearer: []
       summary: List application refunds
@@ -620,7 +1047,12 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/httptransport.Response'
+            allOf:
+            - $ref: '#/definitions/httptransport.Response'
+            - properties:
+                body:
+                  $ref: '#/definitions/httptransport.RecordRefundBody'
+              type: object
       security:
       - Bearer: []
       summary: Record an idempotent refund
@@ -643,7 +1075,12 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/httptransport.Response'
+            allOf:
+            - $ref: '#/definitions/httptransport.Response'
+            - properties:
+                body:
+                  $ref: '#/definitions/httptransport.PlanBody'
+              type: object
       security:
       - Bearer: []
       summary: Create a billing plan
@@ -666,7 +1103,12 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/httptransport.Response'
+            allOf:
+            - $ref: '#/definitions/httptransport.Response'
+            - properties:
+                body:
+                  $ref: '#/definitions/httptransport.PlanDetailBody'
+              type: object
       security:
       - Bearer: []
       summary: Get a plan and its usage prices
@@ -689,7 +1131,12 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/httptransport.Response'
+            allOf:
+            - $ref: '#/definitions/httptransport.Response'
+            - properties:
+                body:
+                  $ref: '#/definitions/httptransport.PlanPageBody'
+              type: object
       security:
       - Bearer: []
       summary: Search billing plans
@@ -712,7 +1159,12 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/httptransport.Response'
+            allOf:
+            - $ref: '#/definitions/httptransport.Response'
+            - properties:
+                body:
+                  $ref: '#/definitions/httptransport.PlanBody'
+              type: object
       security:
       - Bearer: []
       summary: Update a billing plan with optimistic locking
@@ -758,7 +1210,12 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/httptransport.Response'
+            allOf:
+            - $ref: '#/definitions/httptransport.Response'
+            - properties:
+                body:
+                  $ref: '#/definitions/httptransport.UsagePriceBody'
+              type: object
       security:
       - Bearer: []
       summary: Create or update a metered usage price
@@ -781,7 +1238,12 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/httptransport.Response'
+            allOf:
+            - $ref: '#/definitions/httptransport.Response'
+            - properties:
+                body:
+                  $ref: '#/definitions/httptransport.SubscriptionBody'
+              type: object
       security:
       - Bearer: []
       summary: Cancel a subscription immediately or at period end
@@ -804,7 +1266,12 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/httptransport.Response'
+            allOf:
+            - $ref: '#/definitions/httptransport.Response'
+            - properties:
+                body:
+                  $ref: '#/definitions/httptransport.SubscriptionBody'
+              type: object
       security:
       - Bearer: []
       summary: Change a subscription immediately or next period
@@ -827,7 +1294,12 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/httptransport.Response'
+            allOf:
+            - $ref: '#/definitions/httptransport.Response'
+            - properties:
+                body:
+                  $ref: '#/definitions/httptransport.SubscriptionBody'
+              type: object
       security:
       - Bearer: []
       summary: Subscribe a tenant to a plan
@@ -850,7 +1322,12 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/httptransport.Response'
+            allOf:
+            - $ref: '#/definitions/httptransport.Response'
+            - properties:
+                body:
+                  $ref: '#/definitions/httptransport.SubscriptionDetailBody'
+              type: object
       security:
       - Bearer: []
       summary: Get a tenant subscription and plan
@@ -873,7 +1350,12 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/httptransport.Response'
+            allOf:
+            - $ref: '#/definitions/httptransport.Response'
+            - properties:
+                body:
+                  $ref: '#/definitions/httptransport.SubscriptionPageBody'
+              type: object
       security:
       - Bearer: []
       summary: List tenant subscriptions
