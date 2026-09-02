@@ -52,6 +52,26 @@ func TestLoad_EnvironmentStringSlicesAcceptBracketedLists(t *testing.T) {
 	}
 }
 
+func TestLoad_IdempotencyRouteEnvironmentOverrides(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(configPath, []byte("idempotency:\n  http_paths: [/api/v1/old]\n  grpc_methods: [/old.Service/Create]\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("APP_IDEMPOTENCY_HTTP_PATHS", "[/api/v1/plans/create, /api/v1/invoices/generate]")
+	t.Setenv("APP_IDEMPOTENCY_GRPC_METHODS", "[/platform.billing.v1.BillingService/CreatePlan]")
+	cfg, err := Load(configPath)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if strings.Join(cfg.Idempotency.HTTPPaths, ",") != "/api/v1/plans/create,/api/v1/invoices/generate" {
+		t.Fatalf("HTTPPaths = %#v", cfg.Idempotency.HTTPPaths)
+	}
+	if strings.Join(cfg.Idempotency.GRPCMethods, ",") != "/platform.billing.v1.BillingService/CreatePlan" {
+		t.Fatalf("GRPCMethods = %#v", cfg.Idempotency.GRPCMethods)
+	}
+}
+
 func TestConfig_ValidateJWTSecret(t *testing.T) {
 	t.Parallel()
 	cfg := Config{HTTP: HTTP{Address: "127.0.0.1:8080"}, Auth: Auth{ClientID: "client", ClientSecret: "secret"}, JWT: JWT{Secret: "short"}}

@@ -32,6 +32,35 @@ rate_limit:
   enabled: true
 idempotency:
   enabled: true
+  http_paths:
+    - /api/v1/plans/create
+    - /api/v1/plans/update
+    - /api/v1/plans/usage-prices/upsert
+    - /api/v1/plans/usage-prices/delete
+    - /api/v1/subscriptions/create
+    - /api/v1/subscriptions/change
+    - /api/v1/subscriptions/cancel
+    - /api/v1/invoices/generate
+    - /api/v1/invoices/finalize
+    - /api/v1/invoices/void
+    - /api/v1/payments/create-attempt
+    - /api/v1/payments/apply-result
+    - /api/v1/payments/refunds/record
+  grpc_methods:
+    - /platform.billing.v1.BillingService/CreatePlan
+    - /platform.billing.v1.BillingService/UpdatePlan
+    - /platform.billing.v1.BillingService/UpsertUsagePrice
+    - /platform.billing.v1.BillingService/DeleteUsagePrice
+    - /platform.billing.v1.BillingService/CreateSubscription
+    - /platform.billing.v1.BillingService/ChangeSubscription
+    - /platform.billing.v1.BillingService/CancelSubscription
+    - /platform.billing.v1.BillingService/GenerateInvoice
+    - /platform.billing.v1.BillingService/FinalizeInvoice
+    - /platform.billing.v1.BillingService/VoidInvoice
+    - /platform.billing.v1.BillingService/CreatePaymentAttempt
+    - /platform.billing.v1.BillingService/ApplyPaymentResult
+    - /platform.billing.v1.BillingService/RecordRefund
+    - /platform.billing.v1.BillingService/ReconcilePayment
 observability:
   metrics_enabled: true
   tracing_enabled: false
