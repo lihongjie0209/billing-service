@@ -176,3 +176,17 @@ func TestConfigOutboundPSKRequiresTLSOrExplicitDevelopmentOptIn(t *testing.T) {
 		t.Fatalf("production validateClientPolicy() error = %v", err)
 	}
 }
+
+func TestLoadMapsOutboundAllowInsecureEnvironmentOverride(t *testing.T) {
+	t.Setenv("APP_OUTBOUND_GRPC_APPLICATION_AUTH_TYPE", "psk")
+	t.Setenv("APP_OUTBOUND_GRPC_APPLICATION_AUTH_TOKEN", strings.Repeat("p", 32))
+	t.Setenv("APP_OUTBOUND_GRPC_APPLICATION_TLS_ALLOW_INSECURE", "true")
+
+	cfg, err := LoadWithProfile("../../config/config.yaml", "development")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.Outbound.GRPC["application"].TLS.AllowInsecure {
+		t.Fatal("outbound application allow_insecure environment override was not decoded")
+	}
+}
