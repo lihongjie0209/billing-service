@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/lihongjie0209/billing-service/internal/billing"
@@ -23,6 +24,13 @@ type exportProviderServer struct {
 	service *billing.Service
 }
 
+type invoiceExportQuery struct {
+	ApplicationID string `json:"application_id"`
+	Status        string `json:"status"`
+	CreatedFrom   string `json:"created_from"`
+	CreatedTo     string `json:"created_to"`
+}
+
 func (s *exportProviderServer) DescribeDataset(ctx context.Context, r *exportv1.DescribeDatasetRequest) (*exportv1.DescribeDatasetResponse, error) {
 	if err := authorizeExportTenant(ctx, r.GetTenantId()); err != nil {
 		return nil, err
@@ -40,17 +48,9 @@ func (s *exportProviderServer) StreamRows(r *exportv1.StreamRowsRequest, stream 
 	if err != nil {
 		return err
 	}
-	var query struct {
-		ApplicationID string `json:"application_id"`
-		Status        string `json:"status"`
-		CreatedFrom   string `json:"created_from"`
-		CreatedTo     string `json:"created_to"`
-	}
-	if r.GetQueryJson() != "" && json.Unmarshal([]byte(r.GetQueryJson()), &query) != nil {
-		return status.Error(codes.InvalidArgument, "query_json must be an object")
-	}
-	if query.ApplicationID == "" {
-		return status.Error(codes.InvalidArgument, "query_json.application_id is required")
+	query, err := parseInvoiceExportQuery(r.GetApplicationId(), r.GetQueryJson())
+	if err != nil {
+		return err
 	}
 	from, err := parseOptionalTime(query.CreatedFrom)
 	if err != nil {
@@ -75,7 +75,7 @@ func (s *exportProviderServer) StreamRows(r *exportv1.StreamRowsRequest, stream 
 		size = 100
 	}
 	for {
-		values, err := s.service.ListInvoices(stream.Context(), r.GetTenantId(), query.ApplicationID, query.Status, from, to, page, size)
+		values, err := s.service.ListInvoices(stream.Context(), r.GetTenantId(), r.GetApplicationId(), query.Status, from, to, page, size)
 		if err != nil {
 			return billingError(err)
 		}
@@ -104,6 +104,22 @@ func (s *exportProviderServer) StreamRows(r *exportv1.StreamRowsRequest, stream 
 		}
 		page++
 	}
+}
+
+func parseInvoiceExportQuery(applicationID, raw string) (invoiceExportQuery, error) {
+	if applicationID == "" {
+		return invoiceExportQuery{}, status.Error(codes.InvalidArgument, "application_id is required")
+	}
+	query := invoiceExportQuery{}
+	if raw != "" {
+		if err := json.Unmarshal([]byte(raw), &query); err != nil || strings.TrimSpace(raw) == "null" {
+			return invoiceExportQuery{}, status.Error(codes.InvalidArgument, "query_json must be an object")
+		}
+	}
+	if query.ApplicationID != "" && query.ApplicationID != applicationID {
+		return invoiceExportQuery{}, status.Error(codes.InvalidArgument, "query_json.application_id must match application_id")
+	}
+	return query, nil
 }
 func selectInvoiceColumns(keys []string) ([]*exportv1.ExportColumn, error) {
 	if len(keys) == 0 {

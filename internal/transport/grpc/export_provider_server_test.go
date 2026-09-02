@@ -7,6 +7,8 @@ import (
 
 	"github.com/lihongjie0209/billing-service/internal/billing"
 	platformprincipal "github.com/lihongjie0209/microservice-platform-go/principal"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 func TestSelectInvoiceColumnsPreservesRequestedOrder(t *testing.T) {
@@ -40,5 +42,38 @@ func TestAuthorizeExportTenant(t *testing.T) {
 	service := platformprincipal.WithContext(context.Background(), platformprincipal.Principal{ID: "export", Type: platformprincipal.TypeServiceAccount})
 	if err := authorizeExportTenant(service, "tenant-2"); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestParseInvoiceExportQueryUsesProtocolApplicationScope(t *testing.T) {
+	t.Parallel()
+	query, err := parseInvoiceExportQuery("application-1", `{ "status": "open" }`)
+	if err != nil || query.Status != "open" {
+		t.Fatalf("query = %+v, err = %v", query, err)
+	}
+	query, err = parseInvoiceExportQuery("application-1", `{"application_id":"application-1","status":"paid"}`)
+	if err != nil || query.Status != "paid" {
+		t.Fatalf("legacy query = %+v, err = %v", query, err)
+	}
+}
+
+func TestParseInvoiceExportQueryRejectsMissingOrConflictingScope(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		name          string
+		applicationID string
+		raw           string
+	}{
+		{name: "missing top-level scope", raw: `{}`},
+		{name: "conflicting legacy scope", applicationID: "application-1", raw: `{"application_id":"application-2"}`},
+		{name: "non-object query", applicationID: "application-1", raw: `null`},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			_, err := parseInvoiceExportQuery(test.applicationID, test.raw)
+			if status.Code(err) != codes.InvalidArgument {
+				t.Fatalf("status = %s, err = %v", status.Code(err), err)
+			}
+		})
 	}
 }
