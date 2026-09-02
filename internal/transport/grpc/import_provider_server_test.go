@@ -1,6 +1,13 @@
 package grpctransport
 
-import "testing"
+import (
+	"context"
+	"testing"
+
+	platformprincipal "github.com/lihongjie0209/microservice-platform-go/principal"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+)
 
 func TestDecodePlanRowNormalizesPortableValues(t *testing.T) {
 	t.Parallel()
@@ -27,5 +34,30 @@ func TestDecodePlanRowReturnsColumnIssues(t *testing.T) {
 		if issue.GetRowNumber() != 9 || issue.GetCode() == "" {
 			t.Fatalf("issue=%+v", issue)
 		}
+	}
+}
+
+func TestValidateImportStreamRequestPinsApplicationScope(t *testing.T) {
+	t.Parallel()
+	ctx := platformprincipal.WithContext(context.Background(), platformprincipal.Principal{ID: "import-service", Type: platformprincipal.TypeServiceAccount})
+	var tenant, application, job string
+	if err := validateImportStreamRequest(ctx, "tenant-1", "application-1", planImportDataset, "job-1", &tenant, &application, &job); err != nil {
+		t.Fatal(err)
+	}
+	if tenant != "tenant-1" || application != "application-1" || job != "job-1" {
+		t.Fatalf("scope = %q/%q/%q", tenant, application, job)
+	}
+	if err := validateImportStreamRequest(ctx, "tenant-1", "application-2", planImportDataset, "job-1", &tenant, &application, &job); status.Code(err) != codes.InvalidArgument {
+		t.Fatalf("cross-application status = %s, err = %v", status.Code(err), err)
+	}
+}
+
+func TestValidateImportStreamRequestRequiresApplicationScope(t *testing.T) {
+	t.Parallel()
+	ctx := platformprincipal.WithContext(context.Background(), platformprincipal.Principal{ID: "import-service", Type: platformprincipal.TypeServiceAccount})
+	var tenant, application, job string
+	err := validateImportStreamRequest(ctx, "tenant-1", "", planImportDataset, "job-1", &tenant, &application, &job)
+	if status.Code(err) != codes.InvalidArgument {
+		t.Fatalf("status = %s, err = %v", status.Code(err), err)
 	}
 }

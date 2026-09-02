@@ -46,7 +46,7 @@ func (s *importProviderServer) DescribeImportDataset(ctx context.Context, r *imp
 }
 
 func (s *importProviderServer) ValidateRows(stream importv1.ImportProviderService_ValidateRowsServer) error {
-	var tenant, job string
+	var tenant, application, job string
 	for {
 		request, err := stream.Recv()
 		if errors.Is(err, io.EOF) {
@@ -55,7 +55,7 @@ func (s *importProviderServer) ValidateRows(stream importv1.ImportProviderServic
 		if err != nil {
 			return err
 		}
-		if err := validateImportStreamRequest(stream.Context(), request.GetTenantId(), request.GetDatasetCode(), request.GetJobId(), &tenant, &job); err != nil {
+		if err := validateImportStreamRequest(stream.Context(), request.GetTenantId(), request.GetApplicationId(), request.GetDatasetCode(), request.GetJobId(), &tenant, &application, &job); err != nil {
 			return err
 		}
 		normalized := make([]*structpb.Struct, 0, len(request.GetRows()))
@@ -79,7 +79,7 @@ func (s *importProviderServer) ValidateRows(stream importv1.ImportProviderServic
 }
 
 func (s *importProviderServer) ApplyRows(stream importv1.ImportProviderService_ApplyRowsServer) error {
-	var tenant, job string
+	var tenant, application, job string
 	for {
 		request, err := stream.Recv()
 		if errors.Is(err, io.EOF) {
@@ -88,7 +88,7 @@ func (s *importProviderServer) ApplyRows(stream importv1.ImportProviderService_A
 		if err != nil {
 			return err
 		}
-		if err := validateImportStreamRequest(stream.Context(), request.GetTenantId(), request.GetDatasetCode(), request.GetJobId(), &tenant, &job); err != nil {
+		if err := validateImportStreamRequest(stream.Context(), request.GetTenantId(), request.GetApplicationId(), request.GetDatasetCode(), request.GetJobId(), &tenant, &application, &job); err != nil {
 			return err
 		}
 		if strings.TrimSpace(request.GetIdempotencyKey()) == "" {
@@ -115,18 +115,18 @@ func (s *importProviderServer) ApplyRows(stream importv1.ImportProviderService_A
 	}
 }
 
-func validateImportStreamRequest(ctx context.Context, tenantID, dataset, jobID string, tenant, job *string) error {
+func validateImportStreamRequest(ctx context.Context, tenantID, applicationID, dataset, jobID string, tenant, application, job *string) error {
 	if err := authorizeExportTenant(ctx, tenantID); err != nil {
 		return err
 	}
-	if dataset != planImportDataset || strings.TrimSpace(jobID) == "" {
-		return status.Error(codes.InvalidArgument, "valid dataset_code and job_id are required")
+	if strings.TrimSpace(applicationID) == "" || dataset != planImportDataset || strings.TrimSpace(jobID) == "" {
+		return status.Error(codes.InvalidArgument, "valid application_id, dataset_code and job_id are required")
 	}
 	if *tenant == "" {
-		*tenant, *job = tenantID, jobID
+		*tenant, *application, *job = tenantID, applicationID, jobID
 	}
-	if tenantID != *tenant || jobID != *job {
-		return status.Error(codes.InvalidArgument, "a stream cannot mix tenants or jobs")
+	if tenantID != *tenant || applicationID != *application || jobID != *job {
+		return status.Error(codes.InvalidArgument, "a stream cannot mix tenants, applications or jobs")
 	}
 	return nil
 }
