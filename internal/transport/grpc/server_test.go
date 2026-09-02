@@ -93,13 +93,40 @@ func TestBillingRequirementCoversEveryBusinessMethod(t *testing.T) {
 		billingv1.BillingService_CreateSubscription_FullMethodName, billingv1.BillingService_ChangeSubscription_FullMethodName, billingv1.BillingService_CancelSubscription_FullMethodName, billingv1.BillingService_GetSubscription_FullMethodName, billingv1.BillingService_ListSubscriptions_FullMethodName,
 		billingv1.BillingService_PreviewInvoice_FullMethodName, billingv1.BillingService_GenerateInvoice_FullMethodName, billingv1.BillingService_FinalizeInvoice_FullMethodName, billingv1.BillingService_VoidInvoice_FullMethodName, billingv1.BillingService_GetInvoice_FullMethodName, billingv1.BillingService_ListInvoices_FullMethodName,
 		billingv1.BillingService_CreatePaymentAttempt_FullMethodName, billingv1.BillingService_ApplyPaymentResult_FullMethodName, billingv1.BillingService_RecordRefund_FullMethodName, billingv1.BillingService_ReconcilePayment_FullMethodName,
-		exportv1.ExportProviderService_DescribeDataset_FullMethodName, exportv1.ExportProviderService_StreamRows_FullMethodName,
-		importv1.ImportProviderService_DescribeImportDataset_FullMethodName, importv1.ImportProviderService_ValidateRows_FullMethodName, importv1.ImportProviderService_ApplyRows_FullMethodName,
 	}
 	for _, method := range methods {
 		requirement, ok := billingRequirement(method)
 		if !ok || requirement.Resource == "" || requirement.Action == "" {
 			t.Fatalf("method %q requirement = %+v, %v", method, requirement, ok)
+		}
+	}
+}
+
+func TestProviderMethodsUsePSKCapabilityWithoutRBAC(t *testing.T) {
+	t.Parallel()
+	const key = "01234567890123456789012345678901"
+	authService := auth.New(config.Config{JWT: config.JWT{Issuer: "test", Secret: key, TTL: time.Hour}})
+	methods := []string{
+		exportv1.ExportProviderService_DescribeDataset_FullMethodName,
+		exportv1.ExportProviderService_StreamRows_FullMethodName,
+		importv1.ImportProviderService_DescribeImportDataset_FullMethodName,
+		importv1.ImportProviderService_ValidateRows_FullMethodName,
+		importv1.ImportProviderService_ApplyRows_FullMethodName,
+	}
+	cfg := config.Auth{PSK: config.PSK{Enabled: true, Key: key, GRPCMethods: []string{
+		"/platform.export.v1.ExportProviderService/*",
+		"/platform.import.v1.ImportProviderService/*",
+	}}}
+	for _, method := range methods {
+		if requirement, ok := billingRequirement(method); ok {
+			t.Fatalf("provider method %q has redundant RBAC requirement %+v", method, requirement)
+		}
+		ctx := metadata.NewIncomingContext(t.Context(), metadata.Pairs("authorization", "PSK "+key))
+		if _, err := authenticateGRPC(ctx, method, authService, cfg); err != nil {
+			t.Fatalf("provider method %q rejected capability PSK: %v", method, err)
+		}
+		if _, err := authenticateGRPC(t.Context(), method, authService, cfg); status.Code(err) != codes.Unauthenticated {
+			t.Fatalf("provider method %q accepted missing PSK: %v", method, err)
 		}
 	}
 }
