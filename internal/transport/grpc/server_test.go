@@ -92,7 +92,7 @@ func TestBillingRequirementCoversEveryBusinessMethod(t *testing.T) {
 		billingv1.BillingService_CreatePlan_FullMethodName, billingv1.BillingService_UpdatePlan_FullMethodName, billingv1.BillingService_GetPlan_FullMethodName, billingv1.BillingService_ListPlans_FullMethodName, billingv1.BillingService_UpsertUsagePrice_FullMethodName, billingv1.BillingService_DeleteUsagePrice_FullMethodName,
 		billingv1.BillingService_CreateSubscription_FullMethodName, billingv1.BillingService_ChangeSubscription_FullMethodName, billingv1.BillingService_CancelSubscription_FullMethodName, billingv1.BillingService_GetSubscription_FullMethodName, billingv1.BillingService_ListSubscriptions_FullMethodName,
 		billingv1.BillingService_PreviewInvoice_FullMethodName, billingv1.BillingService_GenerateInvoice_FullMethodName, billingv1.BillingService_FinalizeInvoice_FullMethodName, billingv1.BillingService_VoidInvoice_FullMethodName, billingv1.BillingService_GetInvoice_FullMethodName, billingv1.BillingService_ListInvoices_FullMethodName,
-		billingv1.BillingService_CreatePaymentAttempt_FullMethodName, billingv1.BillingService_ApplyPaymentResult_FullMethodName, billingv1.BillingService_RecordRefund_FullMethodName, billingv1.BillingService_ReconcilePayment_FullMethodName,
+		billingv1.BillingService_CreatePaymentAttempt_FullMethodName, billingv1.BillingService_GetPaymentAttempt_FullMethodName, billingv1.BillingService_ApplyPaymentResult_FullMethodName, billingv1.BillingService_RecordRefund_FullMethodName, billingv1.BillingService_ReconcilePayment_FullMethodName,
 	}
 	for _, method := range methods {
 		requirement, ok := billingRequirement(method)
@@ -149,6 +149,7 @@ func TestBillingRequirementUsesResourceOwnershipScope(t *testing.T) {
 	for _, method := range []string{
 		billingv1.BillingService_ListSubscriptions_FullMethodName,
 		billingv1.BillingService_ListInvoices_FullMethodName,
+		billingv1.BillingService_GetPaymentAttempt_FullMethodName,
 	} {
 		requirement, ok := billingRequirement(method)
 		if !ok || requirement.Scope != platformauthz.ScopePrincipal {

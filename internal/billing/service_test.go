@@ -68,8 +68,14 @@ type paymentListRepository struct {
 	Repository
 	paymentTenantID      string
 	paymentApplicationID string
+	paymentID            string
 	refundTenantID       string
 	refundApplicationID  string
+}
+
+func (r *paymentListRepository) GetPayment(_ context.Context, tenantID, applicationID, id string) (PaymentAttempt, error) {
+	r.paymentTenantID, r.paymentApplicationID, r.paymentID = tenantID, applicationID, id
+	return PaymentAttempt{ID: id, TenantID: tenantID, ApplicationID: applicationID}, nil
 }
 
 func (r *paymentListRepository) ListPayments(_ context.Context, tenantID, applicationID, _ string, _, _ int) ([]PaymentAttempt, int64, error) {
@@ -96,12 +102,16 @@ func TestListPaymentsAndRefundsPreserveApplicationScope(t *testing.T) {
 	if err != nil || payments.Total != 1 || len(payments.Items) != 1 {
 		t.Fatalf("ListPayments() = %+v, %v", payments, err)
 	}
+	payment, err := service.GetPayment(ctx, "tenant-1", "app-1", " payment-1 ")
+	if err != nil || payment.ID != "payment-1" {
+		t.Fatalf("GetPayment() = %+v, %v", payment, err)
+	}
 	refunds, err := service.ListRefunds(ctx, "tenant-1", "app-1", "succeeded", 1, 20)
 	if err != nil || refunds.Total != 1 || len(refunds.Items) != 1 {
 		t.Fatalf("ListRefunds() = %+v, %v", refunds, err)
 	}
 	if repository.paymentTenantID != "tenant-1" || repository.paymentApplicationID != "app-1" ||
-		repository.refundTenantID != "tenant-1" || repository.refundApplicationID != "app-1" {
+		repository.paymentID != "payment-1" || repository.refundTenantID != "tenant-1" || repository.refundApplicationID != "app-1" {
 		t.Fatalf("repository scopes = payment %s/%s refund %s/%s", repository.paymentTenantID, repository.paymentApplicationID, repository.refundTenantID, repository.refundApplicationID)
 	}
 }

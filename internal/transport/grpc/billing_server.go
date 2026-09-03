@@ -106,6 +106,10 @@ func (s *billingServer) CreatePaymentAttempt(ctx context.Context, r *billingv1.C
 	v, duplicate, err := s.service.CreatePaymentAttempt(ctx, r.GetTenantId(), r.GetApplicationId(), r.GetInvoiceId(), r.GetProvider(), r.GetPaymentMethodReference(), r.GetIdempotencyKey())
 	return &billingv1.CreatePaymentAttemptResponse{PaymentAttempt: billing.ToProtoPayment(v), Duplicate: duplicate}, billingError(err)
 }
+func (s *billingServer) GetPaymentAttempt(ctx context.Context, r *billingv1.GetPaymentAttemptRequest) (*billingv1.GetPaymentAttemptResponse, error) {
+	v, err := s.service.GetPayment(ctx, r.GetTenantId(), r.GetApplicationId(), r.GetId())
+	return &billingv1.GetPaymentAttemptResponse{PaymentAttempt: billing.ToProtoPayment(v)}, billingError(err)
+}
 func (s *billingServer) ApplyPaymentResult(ctx context.Context, r *billingv1.ApplyPaymentResultRequest) (*billingv1.ApplyPaymentResultResponse, error) {
 	payment, invoice, duplicate, err := s.service.ApplyPaymentResult(ctx, r.GetPaymentAttemptId(), r.GetProviderPaymentId(), r.GetProviderEventId(), r.GetStatus(), r.GetFailureCode(), r.GetFailureMessage(), timestampValue(r.GetProcessedAt()))
 	return &billingv1.ApplyPaymentResultResponse{PaymentAttempt: billing.ToProtoPayment(payment), Invoice: billing.ToProtoInvoice(invoice), Duplicate: duplicate}, billingError(err)

@@ -198,6 +198,17 @@ func listInvoicesDocs() {}
 // @Router /api/v1/payments/create-attempt [post]
 func createPaymentDocs() {}
 
+// getPaymentDocs godoc
+// @Summary Get an application payment attempt
+// @Tags payments
+// @Accept json
+// @Produce json
+// @Security Bearer
+// @Param request body getPaymentRequest true "Payment identity"
+// @Success 200 {object} Response{body=PaymentAttemptBody}
+// @Router /api/v1/payments/get [post]
+func getPaymentDocs() {}
+
 // listPaymentsDocs godoc
 // @Summary List application payment attempts
 // @Tags payments
@@ -247,5 +258,5 @@ var BillingOpenAPIOperations = []func(){
 	upsertUsagePriceDocs, deleteUsagePriceDocs,
 	createSubscriptionDocs, changeSubscriptionDocs, cancelSubscriptionDocs, getSubscriptionDocs, listSubscriptionsDocs,
 	previewInvoiceDocs, generateInvoiceDocs, finalizeInvoiceDocs, voidInvoiceDocs, getInvoiceDocs, listInvoicesDocs,
-	createPaymentDocs, listPaymentsDocs, applyPaymentDocs, recordRefundDocs, listRefundsDocs,
+	createPaymentDocs, getPaymentDocs, listPaymentsDocs, applyPaymentDocs, recordRefundDocs, listRefundsDocs,
 }

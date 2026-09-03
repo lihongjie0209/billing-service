@@ -91,6 +91,7 @@ func billingRequirement(method string) (platformauthz.Requirement, bool) {
 		billingv1.BillingService_GetInvoice_FullMethodName:           {Resource: "billing.invoice", Action: "read", Scope: platformauthz.ScopePrincipal},
 		billingv1.BillingService_ListInvoices_FullMethodName:         {Resource: "billing.invoice", Action: "list", Scope: platformauthz.ScopePrincipal},
 		billingv1.BillingService_CreatePaymentAttempt_FullMethodName: {Resource: "billing.payment", Action: "create", Scope: platformauthz.ScopePrincipal},
+		billingv1.BillingService_GetPaymentAttempt_FullMethodName:    {Resource: "billing.payment", Action: "read", Scope: platformauthz.ScopePrincipal},
 		billingv1.BillingService_ApplyPaymentResult_FullMethodName:   {Resource: "billing.payment", Action: "apply_result", Scope: platformauthz.ScopePrincipal},
 		billingv1.BillingService_RecordRefund_FullMethodName:         {Resource: "billing.payment", Action: "refund", Scope: platformauthz.ScopePrincipal},
 		billingv1.BillingService_ReconcilePayment_FullMethodName:     {Resource: "billing.payment", Action: "reconcile", Scope: platformauthz.ScopePrincipal},

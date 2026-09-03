@@ -159,6 +159,11 @@ type listPaymentsRequest struct {
 	Status        string `json:"status"`
 	pageRequest
 }
+type getPaymentRequest struct {
+	TenantID      string `json:"tenant_id"`
+	ApplicationID string `json:"application_id" binding:"required"`
+	ID            string `json:"id" binding:"required"`
+}
 
 func registerBillingRoutes(api *gin.RouterGroup, h *Handler) {
 	for path, handler := range map[string]gin.HandlerFunc{
@@ -166,7 +171,7 @@ func registerBillingRoutes(api *gin.RouterGroup, h *Handler) {
 		"/plans/usage-prices/upsert": h.UpsertUsagePrice, "/plans/usage-prices/delete": h.DeleteUsagePrice,
 		"/subscriptions/create": h.CreateSubscription, "/subscriptions/change": h.ChangeSubscription, "/subscriptions/cancel": h.CancelSubscription, "/subscriptions/get": h.GetSubscription, "/subscriptions/list": h.ListSubscriptions,
 		"/invoices/preview": h.PreviewInvoice, "/invoices/generate": h.GenerateInvoice, "/invoices/finalize": h.FinalizeInvoice, "/invoices/void": h.VoidInvoice, "/invoices/get": h.GetInvoice, "/invoices/list": h.ListInvoices,
-		"/payments/create-attempt": h.CreatePaymentAttempt, "/payments/apply-result": h.ApplyPaymentResult, "/payments/list": h.ListPayments,
+		"/payments/create-attempt": h.CreatePaymentAttempt, "/payments/get": h.GetPayment, "/payments/apply-result": h.ApplyPaymentResult, "/payments/list": h.ListPayments,
 		"/payments/refunds/record": h.RecordRefund, "/payments/refunds/list": h.ListRefunds,
 	} {
 		api.POST(path, handler)
@@ -357,6 +362,14 @@ func (h *Handler) ListPayments(c *gin.Context) {
 	}
 	v, e := h.billing.ListPayments(c.Request.Context(), r.TenantID, r.ApplicationID, r.Status, r.Page, r.PageSize)
 	result(h, c, paymentAttemptPage(v), e)
+}
+func (h *Handler) GetPayment(c *gin.Context) {
+	r, ok := decode[getPaymentRequest](h, c)
+	if !ok {
+		return
+	}
+	v, e := h.billing.GetPayment(c.Request.Context(), r.TenantID, r.ApplicationID, r.ID)
+	result(h, c, paymentAttemptBody(v), e)
 }
 func (h *Handler) ApplyPaymentResult(c *gin.Context) {
 	r, ok := decode[applyPaymentRequest](h, c)

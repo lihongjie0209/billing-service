@@ -712,6 +712,17 @@ func (s *Service) ListPayments(ctx context.Context, tenantID, applicationID, sta
 	return Page[PaymentAttempt]{Items: items, Total: total, Page: page, PageSize: size}, translate(err)
 }
 
+func (s *Service) GetPayment(ctx context.Context, tenantID, applicationID, id string) (PaymentAttempt, error) {
+	if err := authorizeTenant(ctx, tenantID); err != nil {
+		return PaymentAttempt{}, err
+	}
+	if err := s.verifyApplication(ctx, tenantID, applicationID); err != nil {
+		return PaymentAttempt{}, err
+	}
+	value, err := s.repository.GetPayment(ctx, tenantID, applicationID, strings.TrimSpace(id))
+	return value, translate(err)
+}
+
 func (s *Service) ApplyPaymentResult(ctx context.Context, paymentID, providerPaymentID, providerEventID, status, failureCode, failureMessage string, processedAt time.Time) (PaymentAttempt, Invoice, bool, error) {
 	actorID, err := actor(ctx)
 	if err != nil {

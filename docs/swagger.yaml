@@ -536,6 +536,18 @@ definitions:
     required:
     - application_id
     type: object
+  httptransport.getPaymentRequest:
+    properties:
+      application_id:
+        type: string
+      id:
+        type: string
+      tenant_id:
+        type: string
+    required:
+    - application_id
+    - id
+    type: object
   httptransport.getPlanRequest:
     properties:
       code:
@@ -972,6 +984,34 @@ paths:
       security:
       - Bearer: []
       summary: Create an idempotent payment attempt
+      tags:
+      - payments
+  /api/v1/payments/get:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Payment identity
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/httptransport.getPaymentRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/httptransport.Response'
+            - properties:
+                body:
+                  $ref: '#/definitions/httptransport.PaymentAttemptBody'
+              type: object
+      security:
+      - Bearer: []
+      summary: Get an application payment attempt
       tags:
       - payments
   /api/v1/payments/list:
