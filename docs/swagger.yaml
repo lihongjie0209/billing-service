@@ -641,6 +641,8 @@ definitions:
     properties:
       application_id:
         type: string
+      keyword:
+        type: string
       page:
         type: integer
       page_size:

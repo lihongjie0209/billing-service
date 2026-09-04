@@ -2391,6 +2391,9 @@ const docTemplate = `{
                 "application_id": {
                     "type": "string"
                 },
+                "keyword": {
+                    "type": "string"
+                },
                 "page": {
                     "type": "integer"
                 },

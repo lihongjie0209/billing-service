@@ -131,9 +131,9 @@ type payableInvoiceRepository struct {
 	status string
 }
 
-func (r *payableInvoiceRepository) ListInvoices(_ context.Context, tenantID, applicationID, status string, _, _ time.Time, _, _ int) ([]Invoice, int64, error) {
-	r.status = status
-	return []Invoice{{ID: "invoice-1", TenantID: tenantID, ApplicationID: applicationID, Status: status}}, 1, nil
+func (r *payableInvoiceRepository) ListPayableInvoices(_ context.Context, tenantID, applicationID, keyword string, _, _ int) ([]Invoice, int64, error) {
+	r.status = keyword
+	return []Invoice{{ID: "invoice-1", TenantID: tenantID, ApplicationID: applicationID, Status: "open"}}, 1, nil
 }
 
 func (r *paymentListRepository) GetPayment(_ context.Context, tenantID, applicationID, id string) (PaymentAttempt, error) {
@@ -187,11 +187,11 @@ func TestListPayableInvoicesReturnsOnlyOpenInvoices(t *testing.T) {
 		ID: "user-1", Type: platformprincipal.TypeUser, TenantID: "tenant-1",
 	})
 
-	page, err := service.ListPayableInvoices(ctx, "tenant-1", "app-1", 1, 20)
+	page, err := service.ListPayableInvoices(ctx, "tenant-1", "app-1", " INV-1 ", 1, 20)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if repository.status != "open" || page.Total != 1 || len(page.Items) != 1 || page.Items[0].Status != "open" {
+	if repository.status != "INV-1" || page.Total != 1 || len(page.Items) != 1 || page.Items[0].Status != "open" {
 		t.Fatalf("status=%q page=%+v", repository.status, page)
 	}
 }

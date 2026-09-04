@@ -626,8 +626,19 @@ func (s *Service) ListInvoices(ctx context.Context, tenantID, applicationID, sta
 	return Page[Invoice]{Items: items, Total: total, Page: page, PageSize: size}, translate(err)
 }
 
-func (s *Service) ListPayableInvoices(ctx context.Context, tenantID, applicationID string, page, size int) (Page[Invoice], error) {
-	return s.ListInvoices(ctx, tenantID, applicationID, "open", time.Time{}, time.Time{}, page, size)
+func (s *Service) ListPayableInvoices(ctx context.Context, tenantID, applicationID, keyword string, page, size int) (Page[Invoice], error) {
+	if err := authorizeTenant(ctx, tenantID); err != nil {
+		return Page[Invoice]{}, err
+	}
+	if err := s.verifyApplication(ctx, tenantID, applicationID); err != nil {
+		return Page[Invoice]{}, err
+	}
+	page, size, err := pagination(page, size)
+	if err != nil {
+		return Page[Invoice]{}, err
+	}
+	items, total, err := s.repository.ListPayableInvoices(ctx, tenantID, applicationID, strings.TrimSpace(keyword), size, (page-1)*size)
+	return Page[Invoice]{Items: items, Total: total, Page: page, PageSize: size}, translate(err)
 }
 
 func (s *Service) CreatePaymentAttempt(ctx context.Context, tenantID, applicationID, invoiceID, provider, paymentMethodReference, key string) (PaymentAttempt, bool, error) {

@@ -145,6 +145,7 @@ type createPaymentRequest struct {
 type listPayableInvoicesRequest struct {
 	TenantID      string `json:"tenant_id"`
 	ApplicationID string `json:"application_id" binding:"required"`
+	Keyword       string `json:"keyword"`
 	pageRequest
 }
 type applyPaymentRequest struct {
@@ -381,7 +382,7 @@ func (h *Handler) ListPayableInvoices(c *gin.Context) {
 	if !ok {
 		return
 	}
-	v, e := h.billing.ListPayableInvoices(c.Request.Context(), r.TenantID, r.ApplicationID, r.Page, r.PageSize)
+	v, e := h.billing.ListPayableInvoices(c.Request.Context(), r.TenantID, r.ApplicationID, r.Keyword, r.Page, r.PageSize)
 	result(h, c, invoicePage(v), e)
 }
 func (h *Handler) ListPayments(c *gin.Context) {

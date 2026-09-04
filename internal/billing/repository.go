@@ -37,6 +37,7 @@ type Repository interface {
 	UpdateInvoice(context.Context, sqlx.ExtContext, Invoice, int64) error
 	GetInvoice(context.Context, string, string, string) (Invoice, []InvoiceLine, error)
 	ListInvoices(context.Context, string, string, string, time.Time, time.Time, int, int) ([]Invoice, int64, error)
+	ListPayableInvoices(context.Context, string, string, string, int, int) ([]Invoice, int64, error)
 	ClaimPayment(context.Context, sqlx.ExtContext, PaymentAttempt) (string, bool, error)
 	GetPaymentByKey(context.Context, string) (PaymentAttempt, error)
 	GetPayment(context.Context, string, string, string) (PaymentAttempt, error)
@@ -257,6 +258,23 @@ func (r *SQLRepository) ListInvoices(ctx context.Context, tenantID, applicationI
 	items := []Invoice{}
 	pageArgs := append(append([]any{}, args...), limit, offset)
 	err := r.db.SelectContext(ctx, &items, r.db.Rebind("SELECT "+invoiceColumns+" FROM invoices WHERE "+where+" ORDER BY created_at DESC,id LIMIT ? OFFSET ?"), pageArgs...)
+	return items, total, err
+}
+
+func (r *SQLRepository) ListPayableInvoices(ctx context.Context, tenantID, applicationID, keyword string, limit, offset int) ([]Invoice, int64, error) {
+	where, args := "tenant_id=? AND application_id=? AND status='open'", []any{tenantID, applicationID}
+	if keyword != "" {
+		where += " AND (LOWER(number) LIKE ? OR LOWER(id) LIKE ?)"
+		like := "%" + strings.ToLower(keyword) + "%"
+		args = append(args, like, like)
+	}
+	var total int64
+	if err := r.db.GetContext(ctx, &total, r.db.Rebind("SELECT COUNT(*) FROM invoices WHERE "+where), args...); err != nil {
+		return nil, 0, err
+	}
+	items := []Invoice{}
+	pageArgs := append(append([]any{}, args...), limit, offset)
+	err := r.db.SelectContext(ctx, &items, r.db.Rebind("SELECT "+invoiceColumns+" FROM invoices WHERE "+where+" ORDER BY created_at DESC LIMIT ? OFFSET ?"), pageArgs...)
 	return items, total, err
 }
 func (r *SQLRepository) ClaimPayment(ctx context.Context, e sqlx.ExtContext, v PaymentAttempt) (string, bool, error) {
