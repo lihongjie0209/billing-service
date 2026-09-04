@@ -2,6 +2,8 @@ package billing
 
 import "time"
 
+const PlanStatusActive = "active"
+
 type Audit struct {
 	Version   int64     `db:"version" json:"version"`
 	CreatedAt time.Time `db:"created_at" json:"created_at"`

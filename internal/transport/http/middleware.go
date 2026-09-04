@@ -384,6 +384,7 @@ func billingHTTPRequirement(route string) (platformauthz.Requirement, bool) {
 		"/api/v1/plans/usage-prices/upsert": {Resource: "billing.plan", Action: "update", Scope: platformauthz.ScopePlatform},
 		"/api/v1/plans/usage-prices/delete": {Resource: "billing.plan", Action: "delete", Scope: platformauthz.ScopePlatform},
 		"/api/v1/subscriptions/create":      {Resource: "billing.subscription", Action: "create", Scope: platformauthz.ScopePrincipal},
+		"/api/v1/subscriptions/plans/list":  {Resource: "billing.subscription", Action: "create", Scope: platformauthz.ScopePrincipal},
 		"/api/v1/subscriptions/change":      {Resource: "billing.subscription", Action: "update", Scope: platformauthz.ScopePrincipal},
 		"/api/v1/subscriptions/cancel":      {Resource: "billing.subscription", Action: "cancel", Scope: platformauthz.ScopePrincipal},
 		"/api/v1/subscriptions/get":         {Resource: "billing.subscription", Action: "read", Scope: platformauthz.ScopePrincipal},

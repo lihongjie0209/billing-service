@@ -594,6 +594,15 @@ definitions:
     required:
     - application_id
     type: object
+  httptransport.listAvailablePlansRequest:
+    properties:
+      keyword:
+        type: string
+      page:
+        type: integer
+      page_size:
+        type: integer
+    type: object
   httptransport.listInvoicesRequest:
     properties:
       application_id:
@@ -1401,6 +1410,34 @@ paths:
       security:
       - Bearer: []
       summary: List tenant subscriptions
+      tags:
+      - subscriptions
+  /api/v1/subscriptions/plans/list:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Search and pagination
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/httptransport.listAvailablePlansRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/httptransport.Response'
+            - properties:
+                body:
+                  $ref: '#/definitions/httptransport.PlanPageBody'
+              type: object
+      security:
+      - Bearer: []
+      summary: List active plans available for subscription
       tags:
       - subscriptions
   /api/v1/version:

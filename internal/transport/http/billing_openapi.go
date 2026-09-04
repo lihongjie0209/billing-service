@@ -44,6 +44,17 @@ func getPlanDocs() {}
 // @Router /api/v1/plans/list [post]
 func listPlansDocs() {}
 
+// listAvailablePlansDocs godoc
+// @Summary List active plans available for subscription
+// @Tags subscriptions
+// @Accept json
+// @Produce json
+// @Security Bearer
+// @Param request body listAvailablePlansRequest true "Search and pagination"
+// @Success 200 {object} Response{body=PlanPageBody}
+// @Router /api/v1/subscriptions/plans/list [post]
+func listAvailablePlansDocs() {}
+
 // upsertUsagePriceDocs godoc
 // @Summary Create or update a metered usage price
 // @Tags plans

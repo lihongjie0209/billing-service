@@ -47,6 +47,10 @@ type listPlansRequest struct {
 	Keyword string `json:"keyword"`
 	pageRequest
 }
+type listAvailablePlansRequest struct {
+	Keyword string `json:"keyword"`
+	pageRequest
+}
 type upsertUsagePriceRequest struct {
 	ID               string          `json:"id"`
 	PlanID           string          `json:"plan_id"`
@@ -170,7 +174,7 @@ func registerBillingRoutes(api *gin.RouterGroup, h *Handler) {
 	for path, handler := range map[string]gin.HandlerFunc{
 		"/plans/create": h.CreatePlan, "/plans/update": h.UpdatePlan, "/plans/get": h.GetPlan, "/plans/list": h.ListPlans,
 		"/plans/usage-prices/upsert": h.UpsertUsagePrice, "/plans/usage-prices/delete": h.DeleteUsagePrice,
-		"/subscriptions/create": h.CreateSubscription, "/subscriptions/change": h.ChangeSubscription, "/subscriptions/cancel": h.CancelSubscription, "/subscriptions/get": h.GetSubscription, "/subscriptions/list": h.ListSubscriptions,
+		"/subscriptions/plans/list": h.ListAvailablePlans, "/subscriptions/create": h.CreateSubscription, "/subscriptions/change": h.ChangeSubscription, "/subscriptions/cancel": h.CancelSubscription, "/subscriptions/get": h.GetSubscription, "/subscriptions/list": h.ListSubscriptions,
 		"/invoices/preview": h.PreviewInvoice, "/invoices/generate": h.GenerateInvoice, "/invoices/finalize": h.FinalizeInvoice, "/invoices/void": h.VoidInvoice, "/invoices/get": h.GetInvoice, "/invoices/list": h.ListInvoices,
 		"/payments/create-attempt": h.CreatePaymentAttempt, "/payments/get": h.GetPayment, "/payments/apply-result": h.ApplyPaymentResult, "/payments/list": h.ListPayments,
 		"/payments/refunds/record": h.RecordRefund, "/payments/refunds/list": h.ListRefunds,
@@ -225,6 +229,14 @@ func (h *Handler) ListPlans(c *gin.Context) {
 		return
 	}
 	v, e := h.billing.ListPlans(c.Request.Context(), r.Status, r.Keyword, r.Page, r.PageSize)
+	result(h, c, planPage(v), e)
+}
+func (h *Handler) ListAvailablePlans(c *gin.Context) {
+	r, ok := decode[listAvailablePlansRequest](h, c)
+	if !ok {
+		return
+	}
+	v, e := h.billing.ListPlans(c.Request.Context(), billing.PlanStatusActive, r.Keyword, r.Page, r.PageSize)
 	result(h, c, planPage(v), e)
 }
 func (h *Handler) UpsertUsagePrice(c *gin.Context) {
