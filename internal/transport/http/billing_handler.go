@@ -78,6 +78,7 @@ type changeSubscriptionRequest struct {
 	PlanID        string `json:"plan_id"`
 	EffectiveMode string `json:"effective_mode"`
 	Version       int64  `json:"version"`
+	PlanVersion   int64  `json:"plan_version"`
 }
 type cancelSubscriptionRequest struct {
 	TenantID      string `json:"tenant_id"`
@@ -269,7 +270,7 @@ func (h *Handler) ChangeSubscription(c *gin.Context) {
 	if !ok {
 		return
 	}
-	v, e := h.billing.ChangeSubscription(c.Request.Context(), r.TenantID, r.ApplicationID, r.ID, r.PlanID, r.EffectiveMode, r.Version)
+	v, e := h.billing.ChangeSubscription(c.Request.Context(), r.TenantID, r.ApplicationID, r.ID, r.PlanID, r.EffectiveMode, r.Version, r.PlanVersion)
 	result(h, c, subscriptionBody(v), e)
 }
 func (h *Handler) CancelSubscription(c *gin.Context) {

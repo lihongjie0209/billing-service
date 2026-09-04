@@ -254,7 +254,7 @@ func (s *Service) CreateSubscription(ctx context.Context, tenantID, applicationI
 	})
 	return value, translate(err)
 }
-func (s *Service) ChangeSubscription(ctx context.Context, tenantID, applicationID, id, planID, effectiveMode string, version int64) (Subscription, error) {
+func (s *Service) ChangeSubscription(ctx context.Context, tenantID, applicationID, id, planID, effectiveMode string, version, planVersion int64) (Subscription, error) {
 	actorID, err := actor(ctx)
 	if err != nil {
 		return Subscription{}, err
@@ -268,25 +268,22 @@ func (s *Service) ChangeSubscription(ctx context.Context, tenantID, applicationI
 	if effectiveMode != "immediate" && effectiveMode != "next_period" {
 		return Subscription{}, apperror.Invalid("effective_mode must be immediate or next_period", nil)
 	}
+	planID = strings.TrimSpace(planID)
+	if planID == "" || version < 1 || planVersion < 1 {
+		return Subscription{}, apperror.Invalid("plan_id, version and plan_version are required", nil)
+	}
 	value, err := s.repository.GetSubscription(ctx, tenantID, applicationID, id)
 	if err != nil {
 		return Subscription{}, translate(err)
 	}
-	plan, err := s.repository.GetPlan(ctx, planID, "")
-	if err != nil {
-		return Subscription{}, translate(err)
-	}
-	if plan.Status != "active" || version < 1 {
-		return Subscription{}, apperror.Conflict("plan is not active or version is stale", nil)
-	}
 	changeType := "plan_changed"
 	if effectiveMode == "next_period" {
-		value.PendingPlanID = &plan.ID
+		value.PendingPlanID = &planID
 		changeAt := value.CurrentPeriodEnd
 		value.PendingChangeAt = &changeAt
 		changeType = "plan_change_scheduled"
 	} else {
-		value.PlanID = plan.ID
+		value.PlanID = planID
 		value.PendingPlanID = nil
 		value.PendingChangeAt = nil
 	}
@@ -294,6 +291,9 @@ func (s *Service) ChangeSubscription(ctx context.Context, tenantID, applicationI
 	value.UpdatedAt = s.now()
 	value.UpdatedBy = actorID
 	err = s.transactor.Within(ctx, nil, func(tx *sqlx.Tx) error {
+		if _, lockErr := s.repository.LockActivePlan(ctx, tx, planID, planVersion); lockErr != nil {
+			return lockErr
+		}
 		if err := s.repository.UpdateSubscription(ctx, tx, value, version); err != nil {
 			return err
 		}

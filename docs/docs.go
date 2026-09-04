@@ -2068,6 +2068,9 @@ const docTemplate = `{
                 "plan_id": {
                     "type": "string"
                 },
+                "plan_version": {
+                    "type": "integer"
+                },
                 "tenant_id": {
                     "type": "string"
                 },

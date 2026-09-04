@@ -53,7 +53,7 @@ func (s *billingServer) CreateSubscription(ctx context.Context, r *billingv1.Cre
 	return &billingv1.CreateSubscriptionResponse{Subscription: billing.ToProtoSubscription(v)}, billingError(err)
 }
 func (s *billingServer) ChangeSubscription(ctx context.Context, r *billingv1.ChangeSubscriptionRequest) (*billingv1.ChangeSubscriptionResponse, error) {
-	v, err := s.service.ChangeSubscription(ctx, r.GetTenantId(), r.GetApplicationId(), r.GetId(), r.GetPlanId(), r.GetEffectiveMode(), r.GetVersion())
+	v, err := s.service.ChangeSubscription(ctx, r.GetTenantId(), r.GetApplicationId(), r.GetId(), r.GetPlanId(), r.GetEffectiveMode(), r.GetVersion(), r.GetPlanVersion())
 	return &billingv1.ChangeSubscriptionResponse{Subscription: billing.ToProtoSubscription(v)}, billingError(err)
 }
 func (s *billingServer) CancelSubscription(ctx context.Context, r *billingv1.CancelSubscriptionRequest) (*billingv1.CancelSubscriptionResponse, error) {

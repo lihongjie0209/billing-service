@@ -73,6 +73,34 @@ type usagePriceRepository struct {
 	upserts           int
 }
 
+type subscriptionChangeRepository struct {
+	Repository
+	lockedPlanID      string
+	lockedPlanVersion int64
+	updated           Subscription
+}
+
+func (r *subscriptionChangeRepository) GetSubscription(_ context.Context, tenantID, applicationID, id string) (Subscription, error) {
+	return Subscription{
+		ID: id, TenantID: tenantID, ApplicationID: applicationID, PlanID: "plan-old", Status: "active",
+		CurrentPeriodEnd: time.Now().AddDate(0, 1, 0), Audit: Audit{Version: 4},
+	}, nil
+}
+
+func (r *subscriptionChangeRepository) LockActivePlan(_ context.Context, _ sqlx.ExtContext, id string, version int64) (Plan, error) {
+	r.lockedPlanID, r.lockedPlanVersion = id, version
+	return Plan{ID: id, Status: PlanStatusActive, Audit: Audit{Version: version}}, nil
+}
+
+func (r *subscriptionChangeRepository) UpdateSubscription(_ context.Context, _ sqlx.ExtContext, value Subscription, _ int64) error {
+	r.updated = value
+	return nil
+}
+
+func (*subscriptionChangeRepository) AddOutbox(context.Context, sqlx.ExtContext, OutboxEvent) error {
+	return nil
+}
+
 func (r *usagePriceRepository) LockActivePlan(_ context.Context, _ sqlx.ExtContext, id string, version int64) (Plan, error) {
 	r.lockedPlanID, r.lockedPlanVersion = id, version
 	return Plan{ID: id, Status: PlanStatusActive, Audit: Audit{Version: version}}, nil
@@ -200,6 +228,38 @@ func TestUpsertUsagePriceRequiresPlanVersion(t *testing.T) {
 	}, 0, 0)
 	if err == nil || repository.upserts != 0 {
 		t.Fatalf("error=%v upserts=%d", err, repository.upserts)
+	}
+}
+
+func TestChangeSubscriptionLocksTargetPlanVersion(t *testing.T) {
+	t.Parallel()
+	repository := &subscriptionChangeRepository{}
+	service := newTestService(t, repository, nil)
+	service.transactor = transactionStub{}
+	ctx := platformprincipal.WithContext(t.Context(), platformprincipal.Principal{
+		ID: "user-1", Type: platformprincipal.TypeUser, TenantID: "tenant-1",
+	})
+
+	value, err := service.ChangeSubscription(ctx, "tenant-1", "app-1", "subscription-1", " plan-new ", "immediate", 4, 9)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if value.PlanID != "plan-new" || repository.lockedPlanID != "plan-new" || repository.lockedPlanVersion != 9 || repository.updated.Version != 5 {
+		t.Fatalf("value=%+v lock=%s/%d updated=%+v", value, repository.lockedPlanID, repository.lockedPlanVersion, repository.updated)
+	}
+}
+
+func TestChangeSubscriptionRequiresTargetPlanVersion(t *testing.T) {
+	t.Parallel()
+	repository := &subscriptionChangeRepository{}
+	service := newTestService(t, repository, nil)
+	ctx := platformprincipal.WithContext(t.Context(), platformprincipal.Principal{
+		ID: "user-1", Type: platformprincipal.TypeUser, TenantID: "tenant-1",
+	})
+
+	_, err := service.ChangeSubscription(ctx, "tenant-1", "app-1", "subscription-1", "plan-new", "immediate", 4, 0)
+	if err == nil || repository.lockedPlanID != "" {
+		t.Fatalf("error=%v locked plan=%q", err, repository.lockedPlanID)
 	}
 }
 
