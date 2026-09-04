@@ -64,6 +64,7 @@ type createSubscriptionRequest struct {
 	PlanID            string    `json:"plan_id"`
 	StartsAt          time.Time `json:"starts_at"`
 	ExternalReference string    `json:"external_reference"`
+	PlanVersion       int64     `json:"plan_version"`
 }
 type changeSubscriptionRequest struct {
 	TenantID      string `json:"tenant_id"`
@@ -247,7 +248,7 @@ func (h *Handler) CreateSubscription(c *gin.Context) {
 	if !ok {
 		return
 	}
-	v, e := h.billing.CreateSubscription(c.Request.Context(), r.TenantID, r.ApplicationID, r.PlanID, r.StartsAt, r.ExternalReference)
+	v, e := h.billing.CreateSubscription(c.Request.Context(), r.TenantID, r.ApplicationID, r.PlanID, r.PlanVersion, r.StartsAt, r.ExternalReference)
 	result(h, c, subscriptionBody(v), e)
 }
 func (h *Handler) ChangeSubscription(c *gin.Context) {

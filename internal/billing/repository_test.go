@@ -3,6 +3,7 @@ package billing
 import (
 	"context"
 	"database/sql/driver"
+	"errors"
 	"regexp"
 	"strings"
 	"testing"
@@ -11,6 +12,45 @@ import (
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/jmoiron/sqlx"
 )
+
+func TestSQLRepository_GetActivePlanForSubscriptionRejectsChangedOrInactivePlan(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range []struct {
+		name    string
+		version int64
+		status  string
+	}{
+		{name: "changed version", version: 2, status: "active"},
+		{name: "inactive plan", version: 1, status: "disabled"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			database, mock, err := sqlmock.New()
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = database.Close() })
+			db := sqlx.NewDb(database, "sqlmock")
+			repository := &SQLRepository{db: db}
+			now := time.Now()
+			rows := sqlmock.NewRows(strings.Split(planColumns, ",")).AddRow(
+				"plan-1", "starter", "Starter", "", "CNY", "month", int64(0), int32(0), test.status, `{}`, test.version,
+				now, now, "user-1", "user-1",
+			)
+			mock.ExpectQuery(regexp.QuoteMeta("SELECT " + planColumns + " FROM plans WHERE id=? FOR UPDATE")).
+				WithArgs("plan-1").
+				WillReturnRows(rows)
+
+			_, err = repository.GetActivePlanForSubscription(t.Context(), db, "plan-1", 1)
+			if !errors.Is(err, ErrStaleVersion) {
+				t.Fatalf("GetActivePlanForSubscription() error = %v, want ErrStaleVersion", err)
+			}
+			if err := mock.ExpectationsWereMet(); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
 
 func TestSQLRepository_CreateSubscriptionWritesAbsentPendingPlanAsNull(t *testing.T) {
 	t.Parallel()

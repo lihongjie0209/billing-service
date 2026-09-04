@@ -20,6 +20,7 @@ type Repository interface {
 	CreatePlan(context.Context, sqlx.ExtContext, Plan) error
 	UpdatePlan(context.Context, sqlx.ExtContext, Plan, int64) error
 	GetPlan(context.Context, string, string) (Plan, error)
+	GetActivePlanForSubscription(context.Context, sqlx.ExtContext, string, int64) (Plan, error)
 	ListPlans(context.Context, string, string, int, int) ([]Plan, int64, error)
 	UpsertUsagePrice(context.Context, sqlx.ExtContext, UsagePrice, int64) error
 	DeleteUsagePrice(context.Context, sqlx.ExtContext, string, int64) error
@@ -88,6 +89,18 @@ func (r *SQLRepository) GetPlan(ctx context.Context, id, code string) (Plan, err
 	var v Plan
 	err := r.db.GetContext(ctx, &v, r.db.Rebind(query), arg)
 	return v, notFound(err)
+}
+
+func (r *SQLRepository) GetActivePlanForSubscription(ctx context.Context, e sqlx.ExtContext, id string, expectedVersion int64) (Plan, error) {
+	var value Plan
+	err := sqlx.GetContext(ctx, e, &value, r.db.Rebind("SELECT "+planColumns+" FROM plans WHERE id=? FOR UPDATE"), id)
+	if err != nil {
+		return Plan{}, notFound(err)
+	}
+	if value.Version != expectedVersion || value.Status != "active" {
+		return Plan{}, ErrStaleVersion
+	}
+	return value, nil
 }
 func (r *SQLRepository) ListPlans(ctx context.Context, status, keyword string, limit, offset int) ([]Plan, int64, error) {
 	where, args := "1=1", []any{}

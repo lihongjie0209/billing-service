@@ -2096,6 +2096,9 @@ const docTemplate = `{
                 "plan_id": {
                     "type": "string"
                 },
+                "plan_version": {
+                    "type": "integer"
+                },
                 "starts_at": {
                     "type": "string"
                 },

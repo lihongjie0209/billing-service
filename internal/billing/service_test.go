@@ -3,11 +3,13 @@ package billing
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"math"
 	"testing"
 	"time"
 
 	"github.com/jmoiron/sqlx"
+	"github.com/lihongjie0209/billing-service/internal/apperror"
 	"github.com/lihongjie0209/microservice-platform-go/appaccess"
 	platformprincipal "github.com/lihongjie0209/microservice-platform-go/principal"
 	commonv1 "github.com/lihongjie0209/platform-protos/gen/go/platform/common/v1"
@@ -116,8 +118,8 @@ func TestListPaymentsAndRefundsPreserveApplicationScope(t *testing.T) {
 	}
 }
 
-func (*subscriptionRepository) GetPlan(context.Context, string, string) (Plan, error) {
-	return Plan{ID: "plan-1", Status: "active", BillingInterval: "month"}, nil
+func (*subscriptionRepository) GetActivePlanForSubscription(context.Context, sqlx.ExtContext, string, int64) (Plan, error) {
+	return Plan{ID: "plan-1", Status: "active", BillingInterval: "month", Audit: Audit{Version: 1}}, nil
 }
 func (*subscriptionRepository) ClaimSubscription(context.Context, sqlx.ExtContext, string, string, string, Audit) error {
 	return nil
@@ -139,7 +141,7 @@ func TestCreateSubscriptionPublishesApplicationScopedEvent(t *testing.T) {
 		return time.Date(2026, time.September, 1, 8, 0, 0, 0, time.FixedZone("UTC+8", 8*60*60))
 	}
 	ctx := platformprincipal.WithContext(t.Context(), platformprincipal.Principal{ID: "user-1", Type: platformprincipal.TypeUser, TenantID: "tenant-1"})
-	subscription, err := service.CreateSubscription(ctx, "tenant-1", "app-1", "plan-1", time.Time{}, "")
+	subscription, err := service.CreateSubscription(ctx, "tenant-1", "app-1", "plan-1", 1, time.Time{}, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -149,6 +151,20 @@ func TestCreateSubscriptionPublishesApplicationScopedEvent(t *testing.T) {
 	}
 	if subscription.ApplicationID != "app-1" || envelope.GetTenantId() != "tenant-1" || envelope.GetApplicationId() != "app-1" {
 		t.Fatalf("subscription=%+v envelope scope=%s/%s", subscription, envelope.GetTenantId(), envelope.GetApplicationId())
+	}
+}
+
+func TestCreateSubscriptionRequiresPlanVersion(t *testing.T) {
+	t.Parallel()
+	repository := &subscriptionRepository{}
+	service := newTestService(t, repository, nil)
+	service.transactor = transactionStub{}
+	ctx := platformprincipal.WithContext(t.Context(), platformprincipal.Principal{ID: "user-1", Type: platformprincipal.TypeUser, TenantID: "tenant-1"})
+
+	_, err := service.CreateSubscription(ctx, "tenant-1", "app-1", "plan-1", 0, time.Time{}, "")
+	var appErr *apperror.Error
+	if !errors.As(err, &appErr) || appErr.Code != apperror.CodeInvalidArgument {
+		t.Fatalf("CreateSubscription() error = %v, want invalid argument", err)
 	}
 }
 

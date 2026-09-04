@@ -209,7 +209,7 @@ func (s *Service) DeleteUsagePrice(ctx context.Context, id string, version int64
 	return translate(s.transactor.Within(ctx, nil, func(tx *sqlx.Tx) error { return s.repository.DeleteUsagePrice(ctx, tx, id, version) }))
 }
 
-func (s *Service) CreateSubscription(ctx context.Context, tenantID, applicationID, planID string, startsAt time.Time, externalReference string) (Subscription, error) {
+func (s *Service) CreateSubscription(ctx context.Context, tenantID, applicationID, planID string, planVersion int64, startsAt time.Time, externalReference string) (Subscription, error) {
 	actorID, err := actor(ctx)
 	if err != nil {
 		return Subscription{}, err
@@ -220,23 +220,25 @@ func (s *Service) CreateSubscription(ctx context.Context, tenantID, applicationI
 	if err := s.verifyApplication(ctx, tenantID, applicationID); err != nil {
 		return Subscription{}, err
 	}
-	plan, err := s.repository.GetPlan(ctx, strings.TrimSpace(planID), "")
-	if err != nil {
-		return Subscription{}, translate(err)
-	}
-	if plan.Status != "active" {
-		return Subscription{}, apperror.Conflict("plan is not active", nil)
+	planID = strings.TrimSpace(planID)
+	if planID == "" || planVersion < 1 {
+		return Subscription{}, apperror.Invalid("plan_id and positive plan_version are required", nil)
 	}
 	if startsAt.IsZero() {
 		startsAt = s.now()
 	}
 	now := s.now()
-	status := "active"
-	if plan.TrialDays > 0 {
-		status = "trialing"
-	}
-	value := Subscription{ID: uuid.NewString(), TenantID: strings.TrimSpace(tenantID), ApplicationID: strings.TrimSpace(applicationID), PlanID: plan.ID, Status: status, CurrentPeriodStart: startsAt, CurrentPeriodEnd: addInterval(startsAt, plan.BillingInterval), ExternalReference: strings.TrimSpace(externalReference), Audit: newAudit(actorID, now)}
+	value := Subscription{ID: uuid.NewString(), TenantID: strings.TrimSpace(tenantID), ApplicationID: strings.TrimSpace(applicationID), PlanID: planID, CurrentPeriodStart: startsAt, ExternalReference: strings.TrimSpace(externalReference), Audit: newAudit(actorID, now)}
 	err = s.transactor.Within(ctx, nil, func(tx *sqlx.Tx) error {
+		plan, err := s.repository.GetActivePlanForSubscription(ctx, tx, planID, planVersion)
+		if err != nil {
+			return err
+		}
+		value.Status = "active"
+		if plan.TrialDays > 0 {
+			value.Status = "trialing"
+		}
+		value.CurrentPeriodEnd = addInterval(startsAt, plan.BillingInterval)
 		if err := s.repository.ClaimSubscription(ctx, tx, value.TenantID, value.ApplicationID, value.ID, value.Audit); err != nil {
 			return err
 		}

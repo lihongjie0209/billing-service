@@ -87,7 +87,7 @@ func TestRepositoryAndMigrations(t *testing.T) {
 			if err != nil {
 				t.Fatalf("activate plan: %v", err)
 			}
-			subscription, err := service.CreateSubscription(actorCtx, "tenant-integration", "app-integration", plan.ID, time.Now(), "")
+			subscription, err := service.CreateSubscription(actorCtx, "tenant-integration", "app-integration", plan.ID, plan.Version, time.Now(), "")
 			if err != nil {
 				t.Fatalf("create subscription: %v", err)
 			}

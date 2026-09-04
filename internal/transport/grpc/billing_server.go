@@ -49,7 +49,7 @@ func (s *billingServer) DeleteUsagePrice(ctx context.Context, r *billingv1.Delet
 	return &billingv1.DeleteUsagePriceResponse{}, billingError(err)
 }
 func (s *billingServer) CreateSubscription(ctx context.Context, r *billingv1.CreateSubscriptionRequest) (*billingv1.CreateSubscriptionResponse, error) {
-	v, err := s.service.CreateSubscription(ctx, r.GetTenantId(), r.GetApplicationId(), r.GetPlanId(), timestampValue(r.GetStartsAt()), r.GetExternalReference())
+	v, err := s.service.CreateSubscription(ctx, r.GetTenantId(), r.GetApplicationId(), r.GetPlanId(), r.GetPlanVersion(), timestampValue(r.GetStartsAt()), r.GetExternalReference())
 	return &billingv1.CreateSubscriptionResponse{Subscription: billing.ToProtoSubscription(v)}, billingError(err)
 }
 func (s *billingServer) ChangeSubscription(ctx context.Context, r *billingv1.ChangeSubscriptionRequest) (*billingv1.ChangeSubscriptionResponse, error) {
