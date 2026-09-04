@@ -209,6 +209,17 @@ func listInvoicesDocs() {}
 // @Router /api/v1/payments/create-attempt [post]
 func createPaymentDocs() {}
 
+// listPayableInvoicesDocs godoc
+// @Summary List open invoices available for payment
+// @Tags payments
+// @Accept json
+// @Produce json
+// @Security Bearer
+// @Param request body listPayableInvoicesRequest true "Application scope and pagination"
+// @Success 200 {object} Response{body=InvoicePageBody}
+// @Router /api/v1/payments/invoices/list [post]
+func listPayableInvoicesDocs() {} //nolint:unused // Swagger discovers annotation holders during generation.
+
 // getPaymentDocs godoc
 // @Summary Get an application payment attempt
 // @Tags payments

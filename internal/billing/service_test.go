@@ -126,6 +126,16 @@ type paymentListRepository struct {
 	refundApplicationID  string
 }
 
+type payableInvoiceRepository struct {
+	Repository
+	status string
+}
+
+func (r *payableInvoiceRepository) ListInvoices(_ context.Context, tenantID, applicationID, status string, _, _ time.Time, _, _ int) ([]Invoice, int64, error) {
+	r.status = status
+	return []Invoice{{ID: "invoice-1", TenantID: tenantID, ApplicationID: applicationID, Status: status}}, 1, nil
+}
+
 func (r *paymentListRepository) GetPayment(_ context.Context, tenantID, applicationID, id string) (PaymentAttempt, error) {
 	r.paymentTenantID, r.paymentApplicationID, r.paymentID = tenantID, applicationID, id
 	return PaymentAttempt{ID: id, TenantID: tenantID, ApplicationID: applicationID}, nil
@@ -166,6 +176,23 @@ func TestListPaymentsAndRefundsPreserveApplicationScope(t *testing.T) {
 	if repository.paymentTenantID != "tenant-1" || repository.paymentApplicationID != "app-1" ||
 		repository.paymentID != "payment-1" || repository.refundTenantID != "tenant-1" || repository.refundApplicationID != "app-1" {
 		t.Fatalf("repository scopes = payment %s/%s refund %s/%s", repository.paymentTenantID, repository.paymentApplicationID, repository.refundTenantID, repository.refundApplicationID)
+	}
+}
+
+func TestListPayableInvoicesReturnsOnlyOpenInvoices(t *testing.T) {
+	t.Parallel()
+	repository := &payableInvoiceRepository{}
+	service := newTestService(t, repository, nil)
+	ctx := platformprincipal.WithContext(t.Context(), platformprincipal.Principal{
+		ID: "user-1", Type: platformprincipal.TypeUser, TenantID: "tenant-1",
+	})
+
+	page, err := service.ListPayableInvoices(ctx, "tenant-1", "app-1", 1, 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if repository.status != "open" || page.Total != 1 || len(page.Items) != 1 || page.Items[0].Status != "open" {
+		t.Fatalf("status=%q page=%+v", repository.status, page)
 	}
 }
 

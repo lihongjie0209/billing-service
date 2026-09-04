@@ -142,6 +142,11 @@ type createPaymentRequest struct {
 	PaymentMethodReference string `json:"payment_method_reference"`
 	IdempotencyKey         string `json:"idempotency_key"`
 }
+type listPayableInvoicesRequest struct {
+	TenantID      string `json:"tenant_id"`
+	ApplicationID string `json:"application_id" binding:"required"`
+	pageRequest
+}
 type applyPaymentRequest struct {
 	PaymentAttemptID  string    `json:"payment_attempt_id"`
 	ProviderPaymentID string    `json:"provider_payment_id"`
@@ -179,7 +184,7 @@ func registerBillingRoutes(api *gin.RouterGroup, h *Handler) {
 		"/plans/usage-prices/upsert": h.UpsertUsagePrice, "/plans/usage-prices/delete": h.DeleteUsagePrice,
 		"/subscriptions/plans/list": h.ListAvailablePlans, "/subscriptions/create": h.CreateSubscription, "/subscriptions/change": h.ChangeSubscription, "/subscriptions/cancel": h.CancelSubscription, "/subscriptions/get": h.GetSubscription, "/subscriptions/list": h.ListSubscriptions,
 		"/invoices/preview": h.PreviewInvoice, "/invoices/generate": h.GenerateInvoice, "/invoices/finalize": h.FinalizeInvoice, "/invoices/void": h.VoidInvoice, "/invoices/get": h.GetInvoice, "/invoices/list": h.ListInvoices,
-		"/payments/create-attempt": h.CreatePaymentAttempt, "/payments/get": h.GetPayment, "/payments/apply-result": h.ApplyPaymentResult, "/payments/list": h.ListPayments,
+		"/payments/invoices/list": h.ListPayableInvoices, "/payments/create-attempt": h.CreatePaymentAttempt, "/payments/get": h.GetPayment, "/payments/apply-result": h.ApplyPaymentResult, "/payments/list": h.ListPayments,
 		"/payments/refunds/record": h.RecordRefund, "/payments/refunds/list": h.ListRefunds,
 	} {
 		api.POST(path, handler)
@@ -370,6 +375,14 @@ func (h *Handler) CreatePaymentAttempt(c *gin.Context) {
 	}
 	v, d, e := h.billing.CreatePaymentAttempt(c.Request.Context(), r.TenantID, r.ApplicationID, r.InvoiceID, r.Provider, r.PaymentMethodReference, r.IdempotencyKey)
 	result(h, c, CreatePaymentAttemptBody{PaymentAttempt: paymentAttemptBody(v), Duplicate: d}, e)
+}
+func (h *Handler) ListPayableInvoices(c *gin.Context) {
+	r, ok := decode[listPayableInvoicesRequest](h, c)
+	if !ok {
+		return
+	}
+	v, e := h.billing.ListPayableInvoices(c.Request.Context(), r.TenantID, r.ApplicationID, r.Page, r.PageSize)
+	result(h, c, invoicePage(v), e)
 }
 func (h *Handler) ListPayments(c *gin.Context) {
 	r, ok := decode[listPaymentsRequest](h, c)

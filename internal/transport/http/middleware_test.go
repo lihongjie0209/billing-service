@@ -129,7 +129,7 @@ func TestBillingHTTPRequirementCoversEveryBusinessRoute(t *testing.T) {
 		"/api/v1/plans/create", "/api/v1/plans/update", "/api/v1/plans/get", "/api/v1/plans/list", "/api/v1/plans/usage-prices/upsert", "/api/v1/plans/usage-prices/delete",
 		"/api/v1/subscriptions/plans/list", "/api/v1/subscriptions/create", "/api/v1/subscriptions/change", "/api/v1/subscriptions/cancel", "/api/v1/subscriptions/get", "/api/v1/subscriptions/list",
 		"/api/v1/invoices/preview", "/api/v1/invoices/generate", "/api/v1/invoices/finalize", "/api/v1/invoices/void", "/api/v1/invoices/get", "/api/v1/invoices/list",
-		"/api/v1/payments/create-attempt", "/api/v1/payments/get", "/api/v1/payments/apply-result", "/api/v1/payments/list", "/api/v1/payments/refunds/record", "/api/v1/payments/refunds/list",
+		"/api/v1/payments/invoices/list", "/api/v1/payments/create-attempt", "/api/v1/payments/get", "/api/v1/payments/apply-result", "/api/v1/payments/list", "/api/v1/payments/refunds/record", "/api/v1/payments/refunds/list",
 	}
 	for _, route := range routes {
 		requirement, ok := billingHTTPRequirement(route)
@@ -150,7 +150,7 @@ func TestBillingHTTPRequirementUsesResourceOwnershipScope(t *testing.T) {
 			t.Fatalf("route %q scope = %q, want %q", route, requirement.Scope, platformauthz.ScopePlatform)
 		}
 	}
-	for _, route := range []string{"/api/v1/subscriptions/plans/list", "/api/v1/subscriptions/list", "/api/v1/invoices/list", "/api/v1/payments/get", "/api/v1/payments/list", "/api/v1/payments/refunds/list"} {
+	for _, route := range []string{"/api/v1/subscriptions/plans/list", "/api/v1/subscriptions/list", "/api/v1/invoices/list", "/api/v1/payments/invoices/list", "/api/v1/payments/get", "/api/v1/payments/list", "/api/v1/payments/refunds/list"} {
 		requirement, ok := billingHTTPRequirement(route)
 		if !ok || requirement.Scope != platformauthz.ScopePrincipal {
 			t.Fatalf("route %q scope = %q, want %q", route, requirement.Scope, platformauthz.ScopePrincipal)

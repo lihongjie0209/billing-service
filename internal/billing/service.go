@@ -626,6 +626,10 @@ func (s *Service) ListInvoices(ctx context.Context, tenantID, applicationID, sta
 	return Page[Invoice]{Items: items, Total: total, Page: page, PageSize: size}, translate(err)
 }
 
+func (s *Service) ListPayableInvoices(ctx context.Context, tenantID, applicationID string, page, size int) (Page[Invoice], error) {
+	return s.ListInvoices(ctx, tenantID, applicationID, "open", time.Time{}, time.Time{}, page, size)
+}
+
 func (s *Service) CreatePaymentAttempt(ctx context.Context, tenantID, applicationID, invoiceID, provider, paymentMethodReference, key string) (PaymentAttempt, bool, error) {
 	actorID, err := actor(ctx)
 	if err != nil {

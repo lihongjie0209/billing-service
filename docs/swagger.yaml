@@ -637,6 +637,19 @@ definitions:
     required:
     - application_id
     type: object
+  httptransport.listPayableInvoicesRequest:
+    properties:
+      application_id:
+        type: string
+      page:
+        type: integer
+      page_size:
+        type: integer
+      tenant_id:
+        type: string
+    required:
+    - application_id
+    type: object
   httptransport.listPaymentsRequest:
     properties:
       application_id:
@@ -1040,6 +1053,34 @@ paths:
       security:
       - Bearer: []
       summary: Get an application payment attempt
+      tags:
+      - payments
+  /api/v1/payments/invoices/list:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Application scope and pagination
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/httptransport.listPayableInvoicesRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/httptransport.Response'
+            - properties:
+                body:
+                  $ref: '#/definitions/httptransport.InvoicePageBody'
+              type: object
+      security:
+      - Bearer: []
+      summary: List open invoices available for payment
       tags:
       - payments
   /api/v1/payments/list:
