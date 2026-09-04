@@ -705,6 +705,8 @@ definitions:
         type: string
       payment_attempt_id:
         type: string
+      payment_version:
+        type: integer
       provider_refund_id:
         type: string
       reason:

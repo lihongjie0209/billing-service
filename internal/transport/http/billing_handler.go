@@ -162,6 +162,7 @@ type recordRefundRequest struct {
 	TenantID         string `json:"tenant_id"`
 	ApplicationID    string `json:"application_id" binding:"required"`
 	PaymentAttemptID string `json:"payment_attempt_id"`
+	PaymentVersion   int64  `json:"payment_version"`
 	ProviderRefundID string `json:"provider_refund_id"`
 	IdempotencyKey   string `json:"idempotency_key"`
 	AmountMinor      int64  `json:"amount_minor"`
@@ -415,7 +416,7 @@ func (h *Handler) RecordRefund(c *gin.Context) {
 	if !ok {
 		return
 	}
-	v, i, d, e := h.billing.RecordRefund(c.Request.Context(), r.TenantID, r.ApplicationID, r.PaymentAttemptID, r.ProviderRefundID, r.IdempotencyKey, r.AmountMinor, r.Reason, r.Status)
+	v, i, d, e := h.billing.RecordRefund(c.Request.Context(), r.TenantID, r.ApplicationID, r.PaymentAttemptID, r.PaymentVersion, r.ProviderRefundID, r.IdempotencyKey, r.AmountMinor, r.Reason, r.Status)
 	result(h, c, RecordRefundBody{Refund: refundBody(v), Invoice: invoiceBody(i), Duplicate: d}, e)
 }
 func (h *Handler) ListRefunds(c *gin.Context) {

@@ -829,7 +829,7 @@ func validPaymentTransition(from, to string) bool {
 	}
 }
 
-func (s *Service) RecordRefund(ctx context.Context, tenantID, applicationID, paymentID, providerRefundID, key string, amount int64, reason, status string) (Refund, Invoice, bool, error) {
+func (s *Service) RecordRefund(ctx context.Context, tenantID, applicationID, paymentID string, paymentVersion int64, providerRefundID, key string, amount int64, reason, status string) (Refund, Invoice, bool, error) {
 	actorID, err := actor(ctx)
 	if err != nil {
 		return Refund{}, Invoice{}, false, err
@@ -840,28 +840,29 @@ func (s *Service) RecordRefund(ctx context.Context, tenantID, applicationID, pay
 	if err := s.verifyApplication(ctx, tenantID, applicationID); err != nil {
 		return Refund{}, Invoice{}, false, err
 	}
-	payment, err := s.repository.GetPayment(ctx, tenantID, applicationID, paymentID)
-	if err != nil {
-		return Refund{}, Invoice{}, false, translate(err)
-	}
-	if payment.Status != "succeeded" || amount <= 0 || strings.TrimSpace(key) == "" || strings.TrimSpace(reason) == "" {
+	if paymentVersion < 1 || amount <= 0 || strings.TrimSpace(key) == "" || strings.TrimSpace(reason) == "" {
 		return Refund{}, Invoice{}, false, apperror.Invalid("a successful payment, positive amount, reason and idempotency_key are required", nil)
 	}
 	status = strings.ToLower(strings.TrimSpace(status))
 	if !map[string]bool{"pending": true, "succeeded": true, "failed": true}[status] {
 		return Refund{}, Invoice{}, false, apperror.Invalid("invalid refund status", nil)
 	}
-	invoice, _, err := s.repository.GetInvoice(ctx, tenantID, applicationID, payment.InvoiceID)
-	if err != nil {
-		return Refund{}, Invoice{}, false, translate(err)
-	}
-	if status == "succeeded" && amount > invoice.PaidMinor-invoice.RefundedMinor {
-		return Refund{}, Invoice{}, false, apperror.Conflict("refund exceeds refundable amount", nil)
-	}
 	now := s.now()
-	value := Refund{ID: uuid.NewString(), PaymentAttemptID: payment.ID, InvoiceID: invoice.ID, TenantID: tenantID, ApplicationID: applicationID, ProviderRefundID: strings.TrimSpace(providerRefundID), IdempotencyKey: strings.TrimSpace(key), RequestHash: hashParts(tenantID, applicationID, paymentID, fmt.Sprint(amount), strings.TrimSpace(reason)), AmountMinor: amount, Reason: strings.TrimSpace(reason), Status: status, Audit: newAudit(actorID, now)}
+	var payment PaymentAttempt
+	var invoice Invoice
+	var value Refund
 	existingID, created := "", false
 	err = s.transactor.Within(ctx, nil, func(tx *sqlx.Tx) error {
+		var lockErr error
+		payment, lockErr = s.repository.LockSuccessfulPayment(ctx, tx, tenantID, applicationID, paymentID, paymentVersion)
+		if lockErr != nil {
+			return lockErr
+		}
+		invoice, lockErr = s.repository.LockInvoiceForRefund(ctx, tx, tenantID, applicationID, payment.InvoiceID)
+		if lockErr != nil {
+			return lockErr
+		}
+		value = Refund{ID: uuid.NewString(), PaymentAttemptID: payment.ID, InvoiceID: invoice.ID, TenantID: tenantID, ApplicationID: applicationID, ProviderRefundID: strings.TrimSpace(providerRefundID), IdempotencyKey: strings.TrimSpace(key), RequestHash: hashParts(tenantID, applicationID, paymentID, fmt.Sprint(amount), strings.TrimSpace(reason)), AmountMinor: amount, Reason: strings.TrimSpace(reason), Status: status, Audit: newAudit(actorID, now)}
 		id, claimed, claimErr := s.repository.ClaimRefund(ctx, tx, value)
 		if claimErr != nil {
 			return claimErr
@@ -869,6 +870,9 @@ func (s *Service) RecordRefund(ctx context.Context, tenantID, applicationID, pay
 		existingID, created = id, claimed
 		if !claimed {
 			return nil
+		}
+		if status == "succeeded" && amount > invoice.PaidMinor-invoice.RefundedMinor {
+			return apperror.Conflict("refund exceeds refundable amount", nil)
 		}
 		if status == "succeeded" {
 			invoiceVersion := invoice.Version

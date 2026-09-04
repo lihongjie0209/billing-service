@@ -42,11 +42,13 @@ type Repository interface {
 	ClaimPayment(context.Context, sqlx.ExtContext, PaymentAttempt) (string, bool, error)
 	GetPaymentByKey(context.Context, string) (PaymentAttempt, error)
 	GetPayment(context.Context, string, string, string) (PaymentAttempt, error)
+	LockSuccessfulPayment(context.Context, sqlx.ExtContext, string, string, string, int64) (PaymentAttempt, error)
 	ListPayments(context.Context, string, string, string, int, int) ([]PaymentAttempt, int64, error)
 	UpdatePayment(context.Context, sqlx.ExtContext, PaymentAttempt, int64) error
 	ClaimProviderEvent(context.Context, sqlx.ExtContext, string, string, string, Audit) (bool, error)
 	ClaimRefund(context.Context, sqlx.ExtContext, Refund) (string, bool, error)
 	GetRefund(context.Context, string) (Refund, error)
+	LockInvoiceForRefund(context.Context, sqlx.ExtContext, string, string, string) (Invoice, error)
 	ListRefunds(context.Context, string, string, string, int, int) ([]Refund, int64, error)
 	AddOutbox(context.Context, sqlx.ExtContext, OutboxEvent) error
 }
@@ -327,6 +329,20 @@ func (r *SQLRepository) GetPayment(ctx context.Context, tenantID, applicationID,
 	err := r.db.GetContext(ctx, &v, r.db.Rebind(query), args...)
 	return v, notFound(err)
 }
+func (r *SQLRepository) LockSuccessfulPayment(ctx context.Context, e sqlx.ExtContext, tenantID, applicationID, id string, expectedVersion int64) (PaymentAttempt, error) {
+	var value PaymentAttempt
+	err := sqlx.GetContext(ctx, e, &value, r.db.Rebind("SELECT "+paymentColumns+" FROM payment_attempts WHERE tenant_id=? AND application_id=? AND id=? FOR UPDATE"), tenantID, applicationID, id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return PaymentAttempt{}, ErrNotFound
+	}
+	if err != nil {
+		return PaymentAttempt{}, err
+	}
+	if value.Version != expectedVersion || value.Status != "succeeded" {
+		return PaymentAttempt{}, ErrStaleVersion
+	}
+	return value, nil
+}
 func (r *SQLRepository) ListPayments(ctx context.Context, tenantID, applicationID, status string, limit, offset int) ([]PaymentAttempt, int64, error) {
 	where, args := "tenant_id=? AND application_id=?", []any{tenantID, applicationID}
 	if status != "" {
@@ -392,6 +408,14 @@ func (r *SQLRepository) GetRefund(ctx context.Context, id string) (Refund, error
 	var v Refund
 	err := r.db.GetContext(ctx, &v, r.db.Rebind("SELECT "+refundColumns+" FROM refunds WHERE id=?"), id)
 	return v, notFound(err)
+}
+func (r *SQLRepository) LockInvoiceForRefund(ctx context.Context, e sqlx.ExtContext, tenantID, applicationID, id string) (Invoice, error) {
+	var value Invoice
+	err := sqlx.GetContext(ctx, e, &value, r.db.Rebind("SELECT "+invoiceColumns+" FROM invoices WHERE tenant_id=? AND application_id=? AND id=? FOR UPDATE"), tenantID, applicationID, id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Invoice{}, ErrNotFound
+	}
+	return value, err
 }
 func (r *SQLRepository) ListRefunds(ctx context.Context, tenantID, applicationID, status string, limit, offset int) ([]Refund, int64, error) {
 	where, args := "tenant_id=? AND application_id=?", []any{tenantID, applicationID}

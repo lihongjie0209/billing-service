@@ -115,7 +115,7 @@ func (s *billingServer) ApplyPaymentResult(ctx context.Context, r *billingv1.App
 	return &billingv1.ApplyPaymentResultResponse{PaymentAttempt: billing.ToProtoPayment(payment), Invoice: billing.ToProtoInvoice(invoice), Duplicate: duplicate}, billingError(err)
 }
 func (s *billingServer) RecordRefund(ctx context.Context, r *billingv1.RecordRefundRequest) (*billingv1.RecordRefundResponse, error) {
-	refund, invoice, duplicate, err := s.service.RecordRefund(ctx, r.GetTenantId(), r.GetApplicationId(), r.GetPaymentAttemptId(), r.GetProviderRefundId(), r.GetIdempotencyKey(), r.GetAmountMinor(), r.GetReason(), r.GetStatus())
+	refund, invoice, duplicate, err := s.service.RecordRefund(ctx, r.GetTenantId(), r.GetApplicationId(), r.GetPaymentAttemptId(), r.GetPaymentVersion(), r.GetProviderRefundId(), r.GetIdempotencyKey(), r.GetAmountMinor(), r.GetReason(), r.GetStatus())
 	return &billingv1.RecordRefundResponse{Refund: billing.ToProtoRefund(refund), Invoice: billing.ToProtoInvoice(invoice), Duplicate: duplicate}, billingError(err)
 }
 func (s *billingServer) ReconcilePayment(ctx context.Context, r *billingv1.ReconcilePaymentRequest) (*billingv1.ReconcilePaymentResponse, error) {

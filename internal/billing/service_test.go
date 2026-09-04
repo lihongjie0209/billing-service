@@ -357,6 +357,9 @@ func (*planImportRepository) AddOutbox(context.Context, sqlx.ExtContext, OutboxE
 func (r *paymentRepository) GetPayment(context.Context, string, string, string) (PaymentAttempt, error) {
 	return r.payment, nil
 }
+func (r *paymentRepository) LockSuccessfulPayment(context.Context, sqlx.ExtContext, string, string, string, int64) (PaymentAttempt, error) {
+	return r.payment, nil
+}
 func (r *paymentRepository) GetPaymentByKey(_ context.Context, key string) (PaymentAttempt, error) {
 	if r.payment.IdempotencyKey == key {
 		return r.payment, nil
@@ -373,6 +376,12 @@ func (r *paymentRepository) GetInvoice(context.Context, string, string, string) 
 func (r *paymentRepository) LockPayableInvoice(_ context.Context, _ sqlx.ExtContext, _, _, _ string, version int64) (Invoice, error) {
 	r.lockedInvoiceVersion = version
 	return r.invoice, nil
+}
+func (r *paymentRepository) LockInvoiceForRefund(context.Context, sqlx.ExtContext, string, string, string) (Invoice, error) {
+	return r.invoice, nil
+}
+func (_ *paymentRepository) ClaimRefund(_ context.Context, _ sqlx.ExtContext, value Refund) (string, bool, error) {
+	return value.ID, true, nil
 }
 func (r *paymentRepository) ClaimProviderEvent(context.Context, sqlx.ExtContext, string, string, string, Audit) (bool, error) {
 	return r.claim, nil
@@ -482,10 +491,11 @@ func TestApplyPaymentResultTreatsProviderReplayAsDuplicate(t *testing.T) {
 
 func TestRecordRefundRejectsAmountAboveRefundableBalance(t *testing.T) {
 	t.Parallel()
-	repository := &paymentRepository{payment: PaymentAttempt{ID: "payment-1", InvoiceID: "invoice-1", TenantID: "tenant-1", ApplicationID: "app-1", Status: "succeeded"}, invoice: Invoice{ID: "invoice-1", TenantID: "tenant-1", ApplicationID: "app-1", PaidMinor: 1000, RefundedMinor: 800}}
+	repository := &paymentRepository{payment: PaymentAttempt{ID: "payment-1", InvoiceID: "invoice-1", TenantID: "tenant-1", ApplicationID: "app-1", Status: "succeeded", Audit: Audit{Version: 1}}, invoice: Invoice{ID: "invoice-1", TenantID: "tenant-1", ApplicationID: "app-1", PaidMinor: 1000, RefundedMinor: 800}}
 	service := newTestService(t, repository, nil)
+	service.transactor = transactionStub{}
 	ctx := platformprincipal.WithContext(t.Context(), platformprincipal.Principal{ID: "user-1", Type: platformprincipal.TypeUser, TenantID: "tenant-1"})
-	if _, _, _, err := service.RecordRefund(ctx, "tenant-1", "app-1", "payment-1", "provider-refund", "refund-key", 201, "duplicate", "succeeded"); err == nil {
+	if _, _, _, err := service.RecordRefund(ctx, "tenant-1", "app-1", "payment-1", 1, "provider-refund", "refund-key", 201, "duplicate", "succeeded"); err == nil {
 		t.Fatal("expected over-refund rejection")
 	}
 }

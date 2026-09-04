@@ -2489,6 +2489,9 @@ const docTemplate = `{
                 "payment_attempt_id": {
                     "type": "string"
                 },
+                "payment_version": {
+                    "type": "integer"
+                },
                 "provider_refund_id": {
                     "type": "string"
                 },
