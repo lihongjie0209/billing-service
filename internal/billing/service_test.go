@@ -380,7 +380,7 @@ func (r *paymentRepository) LockPayableInvoice(_ context.Context, _ sqlx.ExtCont
 func (r *paymentRepository) LockInvoiceForRefund(context.Context, sqlx.ExtContext, string, string, string) (Invoice, error) {
 	return r.invoice, nil
 }
-func (_ *paymentRepository) ClaimRefund(_ context.Context, _ sqlx.ExtContext, value Refund) (string, bool, error) {
+func (*paymentRepository) ClaimRefund(_ context.Context, _ sqlx.ExtContext, value Refund) (string, bool, error) {
 	return value.ID, true, nil
 }
 func (r *paymentRepository) ClaimProviderEvent(context.Context, sqlx.ExtContext, string, string, string, Audit) (bool, error) {
