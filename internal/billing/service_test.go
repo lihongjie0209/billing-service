@@ -66,6 +66,23 @@ type subscriptionRepository struct {
 	outbox OutboxEvent
 }
 
+type usagePriceRepository struct {
+	Repository
+	lockedPlanID      string
+	lockedPlanVersion int64
+	upserts           int
+}
+
+func (r *usagePriceRepository) LockActivePlan(_ context.Context, _ sqlx.ExtContext, id string, version int64) (Plan, error) {
+	r.lockedPlanID, r.lockedPlanVersion = id, version
+	return Plan{ID: id, Status: PlanStatusActive, Audit: Audit{Version: version}}, nil
+}
+
+func (r *usagePriceRepository) UpsertUsagePrice(context.Context, sqlx.ExtContext, UsagePrice, int64) error {
+	r.upserts++
+	return nil
+}
+
 type paymentListRepository struct {
 	Repository
 	paymentTenantID      string
@@ -118,7 +135,7 @@ func TestListPaymentsAndRefundsPreserveApplicationScope(t *testing.T) {
 	}
 }
 
-func (*subscriptionRepository) GetActivePlanForSubscription(context.Context, sqlx.ExtContext, string, int64) (Plan, error) {
+func (*subscriptionRepository) LockActivePlan(context.Context, sqlx.ExtContext, string, int64) (Plan, error) {
 	return Plan{ID: "plan-1", Status: "active", BillingInterval: "month", Audit: Audit{Version: 1}}, nil
 }
 func (*subscriptionRepository) ClaimSubscription(context.Context, sqlx.ExtContext, string, string, string, Audit) error {
@@ -151,6 +168,38 @@ func TestCreateSubscriptionPublishesApplicationScopedEvent(t *testing.T) {
 	}
 	if subscription.ApplicationID != "app-1" || envelope.GetTenantId() != "tenant-1" || envelope.GetApplicationId() != "app-1" {
 		t.Fatalf("subscription=%+v envelope scope=%s/%s", subscription, envelope.GetTenantId(), envelope.GetApplicationId())
+	}
+}
+
+func TestUpsertUsagePriceLocksCurrentActivePlan(t *testing.T) {
+	t.Parallel()
+	repository := &usagePriceRepository{}
+	service := newTestService(t, repository, nil)
+	service.transactor = transactionStub{}
+	ctx := platformprincipal.WithContext(t.Context(), platformprincipal.Principal{ID: "user-1", Type: platformprincipal.TypeUser})
+
+	value, err := service.UpsertUsagePrice(ctx, UsagePrice{
+		PlanID: "plan-1", MeterCode: "requests", UnitQuantity: 1, PricingModel: "per_unit", TiersJSON: "[]",
+	}, 0, 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if value.ID == "" || repository.lockedPlanID != "plan-1" || repository.lockedPlanVersion != 3 || repository.upserts != 1 {
+		t.Fatalf("value=%+v lock=%s/%d upserts=%d", value, repository.lockedPlanID, repository.lockedPlanVersion, repository.upserts)
+	}
+}
+
+func TestUpsertUsagePriceRequiresPlanVersion(t *testing.T) {
+	t.Parallel()
+	repository := &usagePriceRepository{}
+	service := newTestService(t, repository, nil)
+	ctx := platformprincipal.WithContext(t.Context(), platformprincipal.Principal{ID: "user-1", Type: platformprincipal.TypeUser})
+
+	_, err := service.UpsertUsagePrice(ctx, UsagePrice{
+		PlanID: "plan-1", MeterCode: "requests", UnitQuantity: 1, PricingModel: "per_unit", TiersJSON: "[]",
+	}, 0, 0)
+	if err == nil || repository.upserts != 0 {
+		t.Fatalf("error=%v upserts=%d", err, repository.upserts)
 	}
 }
 

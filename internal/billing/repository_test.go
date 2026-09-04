@@ -13,7 +13,7 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
-func TestSQLRepository_GetActivePlanForSubscriptionRejectsChangedOrInactivePlan(t *testing.T) {
+func TestSQLRepository_LockActivePlanRejectsChangedOrInactivePlan(t *testing.T) {
 	t.Parallel()
 
 	for _, test := range []struct {
@@ -41,9 +41,9 @@ func TestSQLRepository_GetActivePlanForSubscriptionRejectsChangedOrInactivePlan(
 				WithArgs("plan-1").
 				WillReturnRows(rows)
 
-			_, err = repository.GetActivePlanForSubscription(t.Context(), db, "plan-1", 1)
+			_, err = repository.LockActivePlan(t.Context(), db, "plan-1", 1)
 			if !errors.Is(err, ErrStaleVersion) {
-				t.Fatalf("GetActivePlanForSubscription() error = %v, want ErrStaleVersion", err)
+				t.Fatalf("LockActivePlan() error = %v, want ErrStaleVersion", err)
 			}
 			if err := mock.ExpectationsWereMet(); err != nil {
 				t.Fatal(err)

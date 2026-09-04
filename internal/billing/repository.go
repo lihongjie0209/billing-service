@@ -20,7 +20,7 @@ type Repository interface {
 	CreatePlan(context.Context, sqlx.ExtContext, Plan) error
 	UpdatePlan(context.Context, sqlx.ExtContext, Plan, int64) error
 	GetPlan(context.Context, string, string) (Plan, error)
-	GetActivePlanForSubscription(context.Context, sqlx.ExtContext, string, int64) (Plan, error)
+	LockActivePlan(context.Context, sqlx.ExtContext, string, int64) (Plan, error)
 	ListPlans(context.Context, string, string, int, int) ([]Plan, int64, error)
 	UpsertUsagePrice(context.Context, sqlx.ExtContext, UsagePrice, int64) error
 	DeleteUsagePrice(context.Context, sqlx.ExtContext, string, int64) error
@@ -91,7 +91,7 @@ func (r *SQLRepository) GetPlan(ctx context.Context, id, code string) (Plan, err
 	return v, notFound(err)
 }
 
-func (r *SQLRepository) GetActivePlanForSubscription(ctx context.Context, e sqlx.ExtContext, id string, expectedVersion int64) (Plan, error) {
+func (r *SQLRepository) LockActivePlan(ctx context.Context, e sqlx.ExtContext, id string, expectedVersion int64) (Plan, error) {
 	var value Plan
 	err := sqlx.GetContext(ctx, e, &value, r.db.Rebind("SELECT "+planColumns+" FROM plans WHERE id=? FOR UPDATE"), id)
 	if err != nil {

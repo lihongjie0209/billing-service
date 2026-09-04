@@ -41,7 +41,7 @@ func (s *billingServer) ListPlans(ctx context.Context, r *billingv1.ListPlansReq
 	return &billingv1.ListPlansResponse{Plans: items, Page: pageResult(values.Total, values.Page, values.PageSize)}, billingError(err)
 }
 func (s *billingServer) UpsertUsagePrice(ctx context.Context, r *billingv1.UpsertUsagePriceRequest) (*billingv1.UpsertUsagePriceResponse, error) {
-	v, err := s.service.UpsertUsagePrice(ctx, billing.UsagePrice{ID: r.GetId(), PlanID: r.GetPlanId(), MeterCode: r.GetMeterCode(), IncludedQuantity: r.GetIncludedQuantity(), UnitQuantity: r.GetUnitQuantity(), UnitAmountMinor: r.GetUnitAmountMinor(), PricingModel: r.GetPricingModel(), TiersJSON: r.GetTiersJson()}, r.GetExpectedVersion())
+	v, err := s.service.UpsertUsagePrice(ctx, billing.UsagePrice{ID: r.GetId(), PlanID: r.GetPlanId(), MeterCode: r.GetMeterCode(), IncludedQuantity: r.GetIncludedQuantity(), UnitQuantity: r.GetUnitQuantity(), UnitAmountMinor: r.GetUnitAmountMinor(), PricingModel: r.GetPricingModel(), TiersJSON: r.GetTiersJson()}, r.GetExpectedVersion(), r.GetPlanVersion())
 	return &billingv1.UpsertUsagePriceResponse{UsagePrice: billing.ToProtoUsagePrice(v)}, billingError(err)
 }
 func (s *billingServer) DeleteUsagePrice(ctx context.Context, r *billingv1.DeleteUsagePriceRequest) (*billingv1.DeleteUsagePriceResponse, error) {

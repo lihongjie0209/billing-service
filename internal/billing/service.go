@@ -172,7 +172,7 @@ func (s *Service) ListPlans(ctx context.Context, status, keyword string, page, s
 	items, total, err := s.repository.ListPlans(ctx, strings.TrimSpace(status), strings.TrimSpace(keyword), size, (page-1)*size)
 	return Page[Plan]{Items: items, Total: total, Page: page, PageSize: size}, translate(err)
 }
-func (s *Service) UpsertUsagePrice(ctx context.Context, value UsagePrice, expected int64) (UsagePrice, error) {
+func (s *Service) UpsertUsagePrice(ctx context.Context, value UsagePrice, expected, planVersion int64) (UsagePrice, error) {
 	actorID, err := actor(ctx)
 	if err != nil {
 		return UsagePrice{}, err
@@ -180,7 +180,7 @@ func (s *Service) UpsertUsagePrice(ctx context.Context, value UsagePrice, expect
 	value.PlanID = strings.TrimSpace(value.PlanID)
 	value.MeterCode = strings.ToLower(strings.TrimSpace(value.MeterCode))
 	value.PricingModel = strings.ToLower(strings.TrimSpace(value.PricingModel))
-	if value.PlanID == "" || value.MeterCode == "" || value.IncludedQuantity < 0 || value.UnitQuantity <= 0 || value.UnitAmountMinor < 0 || !map[string]bool{"per_unit": true, "volume": true, "graduated": true}[value.PricingModel] || !validJSON(value.TiersJSON, "[]") {
+	if value.PlanID == "" || planVersion < 1 || value.MeterCode == "" || value.IncludedQuantity < 0 || value.UnitQuantity <= 0 || value.UnitAmountMinor < 0 || !map[string]bool{"per_unit": true, "volume": true, "graduated": true}[value.PricingModel] || !validJSON(value.TiersJSON, "[]") {
 		return UsagePrice{}, apperror.Invalid("invalid usage price", nil)
 	}
 	now := s.now()
@@ -196,7 +196,12 @@ func (s *Service) UpsertUsagePrice(ctx context.Context, value UsagePrice, expect
 		value.UpdatedBy = actorID
 	}
 	value.TiersJSON = defaultJSON(value.TiersJSON, "[]")
-	err = s.transactor.Within(ctx, nil, func(tx *sqlx.Tx) error { return s.repository.UpsertUsagePrice(ctx, tx, value, expected) })
+	err = s.transactor.Within(ctx, nil, func(tx *sqlx.Tx) error {
+		if _, lockErr := s.repository.LockActivePlan(ctx, tx, value.PlanID, planVersion); lockErr != nil {
+			return lockErr
+		}
+		return s.repository.UpsertUsagePrice(ctx, tx, value, expected)
+	})
 	return value, translate(err)
 }
 func (s *Service) DeleteUsagePrice(ctx context.Context, id string, version int64) error {
@@ -230,7 +235,7 @@ func (s *Service) CreateSubscription(ctx context.Context, tenantID, applicationI
 	now := s.now()
 	value := Subscription{ID: uuid.NewString(), TenantID: strings.TrimSpace(tenantID), ApplicationID: strings.TrimSpace(applicationID), PlanID: planID, CurrentPeriodStart: startsAt, ExternalReference: strings.TrimSpace(externalReference), Audit: newAudit(actorID, now)}
 	err = s.transactor.Within(ctx, nil, func(tx *sqlx.Tx) error {
-		plan, err := s.repository.GetActivePlanForSubscription(ctx, tx, planID, planVersion)
+		plan, err := s.repository.LockActivePlan(ctx, tx, planID, planVersion)
 		if err != nil {
 			return err
 		}

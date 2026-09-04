@@ -61,6 +61,7 @@ type upsertUsagePriceRequest struct {
 	PricingModel     string          `json:"pricing_model"`
 	TiersJSON        json.RawMessage `json:"tiers_json" swaggertype:"array,object"`
 	ExpectedVersion  int64           `json:"expected_version"`
+	PlanVersion      int64           `json:"plan_version"`
 }
 type createSubscriptionRequest struct {
 	TenantID          string    `json:"tenant_id"`
@@ -244,7 +245,7 @@ func (h *Handler) UpsertUsagePrice(c *gin.Context) {
 	if !ok {
 		return
 	}
-	v, e := h.billing.UpsertUsagePrice(c.Request.Context(), billing.UsagePrice{ID: r.ID, PlanID: r.PlanID, MeterCode: r.MeterCode, IncludedQuantity: r.IncludedQuantity, UnitQuantity: r.UnitQuantity, UnitAmountMinor: r.UnitAmountMinor, PricingModel: r.PricingModel, TiersJSON: string(rawArray(r.TiersJSON))}, r.ExpectedVersion)
+	v, e := h.billing.UpsertUsagePrice(c.Request.Context(), billing.UsagePrice{ID: r.ID, PlanID: r.PlanID, MeterCode: r.MeterCode, IncludedQuantity: r.IncludedQuantity, UnitQuantity: r.UnitQuantity, UnitAmountMinor: r.UnitAmountMinor, PricingModel: r.PricingModel, TiersJSON: string(rawArray(r.TiersJSON))}, r.ExpectedVersion, r.PlanVersion)
 	result(h, c, usagePriceBody(v), e)
 }
 func (h *Handler) DeleteUsagePrice(c *gin.Context) {
