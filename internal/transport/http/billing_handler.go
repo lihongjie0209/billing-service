@@ -13,11 +13,6 @@ type pageRequest struct {
 	Page     int `json:"page"`
 	PageSize int `json:"page_size"`
 }
-type idVersionRequest struct {
-	TenantID string `json:"tenant_id"`
-	ID       string `json:"id"`
-	Version  int64  `json:"version"`
-}
 type createPlanRequest struct {
 	Code             string          `json:"code"`
 	Name             string          `json:"name"`
@@ -62,6 +57,12 @@ type upsertUsagePriceRequest struct {
 	TiersJSON        json.RawMessage `json:"tiers_json" swaggertype:"array,object"`
 	ExpectedVersion  int64           `json:"expected_version"`
 	PlanVersion      int64           `json:"plan_version"`
+}
+type deleteUsagePriceRequest struct {
+	ID          string `json:"id"`
+	Version     int64  `json:"version"`
+	PlanID      string `json:"plan_id"`
+	PlanVersion int64  `json:"plan_version"`
 }
 type createSubscriptionRequest struct {
 	TenantID          string    `json:"tenant_id"`
@@ -250,11 +251,11 @@ func (h *Handler) UpsertUsagePrice(c *gin.Context) {
 	result(h, c, usagePriceBody(v), e)
 }
 func (h *Handler) DeleteUsagePrice(c *gin.Context) {
-	r, ok := decode[idVersionRequest](h, c)
+	r, ok := decode[deleteUsagePriceRequest](h, c)
 	if !ok {
 		return
 	}
-	e := h.billing.DeleteUsagePrice(c.Request.Context(), r.ID, r.Version)
+	e := h.billing.DeleteUsagePrice(c.Request.Context(), r.ID, r.Version, r.PlanID, r.PlanVersion)
 	result(h, c, nil, e)
 }
 func (h *Handler) CreateSubscription(c *gin.Context) {

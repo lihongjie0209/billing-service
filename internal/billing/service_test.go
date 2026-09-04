@@ -71,6 +71,7 @@ type usagePriceRepository struct {
 	lockedPlanID      string
 	lockedPlanVersion int64
 	upserts           int
+	deletes           int
 }
 
 type subscriptionChangeRepository struct {
@@ -108,6 +109,11 @@ func (r *usagePriceRepository) LockActivePlan(_ context.Context, _ sqlx.ExtConte
 
 func (r *usagePriceRepository) UpsertUsagePrice(context.Context, sqlx.ExtContext, UsagePrice, int64) error {
 	r.upserts++
+	return nil
+}
+
+func (r *usagePriceRepository) DeleteUsagePrice(context.Context, sqlx.ExtContext, string, int64) error {
+	r.deletes++
 	return nil
 }
 
@@ -228,6 +234,34 @@ func TestUpsertUsagePriceRequiresPlanVersion(t *testing.T) {
 	}, 0, 0)
 	if err == nil || repository.upserts != 0 {
 		t.Fatalf("error=%v upserts=%d", err, repository.upserts)
+	}
+}
+
+func TestDeleteUsagePriceLocksCurrentActivePlan(t *testing.T) {
+	t.Parallel()
+	repository := &usagePriceRepository{}
+	service := newTestService(t, repository, nil)
+	service.transactor = transactionStub{}
+	ctx := platformprincipal.WithContext(t.Context(), platformprincipal.Principal{ID: "user-1", Type: platformprincipal.TypeUser})
+
+	err := service.DeleteUsagePrice(ctx, "price-1", 2, " plan-1 ", 7)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if repository.lockedPlanID != "plan-1" || repository.lockedPlanVersion != 7 || repository.deletes != 1 {
+		t.Fatalf("lock=%s/%d deletes=%d", repository.lockedPlanID, repository.lockedPlanVersion, repository.deletes)
+	}
+}
+
+func TestDeleteUsagePriceRequiresParentPlanVersion(t *testing.T) {
+	t.Parallel()
+	repository := &usagePriceRepository{}
+	service := newTestService(t, repository, nil)
+	ctx := platformprincipal.WithContext(t.Context(), platformprincipal.Principal{ID: "user-1", Type: platformprincipal.TypeUser})
+
+	err := service.DeleteUsagePrice(ctx, "price-1", 2, "plan-1", 0)
+	if err == nil || repository.deletes != 0 {
+		t.Fatalf("error=%v deletes=%d", err, repository.deletes)
 	}
 }
 

@@ -72,7 +72,7 @@ func upsertUsagePriceDocs() {}
 // @Accept json
 // @Produce json
 // @Security Bearer
-// @Param request body idVersionRequest true "Identity and version"
+// @Param request body deleteUsagePriceRequest true "Usage price and parent plan versions"
 // @Success 200 {object} Response
 // @Router /api/v1/plans/usage-prices/delete [post]
 func deleteUsagePriceDocs() {}
@@ -182,7 +182,7 @@ func voidInvoiceDocs() {}
 // @Accept json
 // @Produce json
 // @Security Bearer
-// @Param request body idVersionRequest true "Invoice identity"
+// @Param request body getInvoiceRequest true "Invoice identity"
 // @Success 200 {object} Response{body=InvoiceDetailBody}
 // @Router /api/v1/invoices/get [post]
 func getInvoiceDocs() {}

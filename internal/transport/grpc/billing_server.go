@@ -45,7 +45,7 @@ func (s *billingServer) UpsertUsagePrice(ctx context.Context, r *billingv1.Upser
 	return &billingv1.UpsertUsagePriceResponse{UsagePrice: billing.ToProtoUsagePrice(v)}, billingError(err)
 }
 func (s *billingServer) DeleteUsagePrice(ctx context.Context, r *billingv1.DeleteUsagePriceRequest) (*billingv1.DeleteUsagePriceResponse, error) {
-	err := s.service.DeleteUsagePrice(ctx, r.GetId(), r.GetVersion())
+	err := s.service.DeleteUsagePrice(ctx, r.GetId(), r.GetVersion(), r.GetPlanId(), r.GetPlanVersion())
 	return &billingv1.DeleteUsagePriceResponse{}, billingError(err)
 }
 func (s *billingServer) CreateSubscription(ctx context.Context, r *billingv1.CreateSubscriptionRequest) (*billingv1.CreateSubscriptionResponse, error) {

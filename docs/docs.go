@@ -139,7 +139,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/httptransport.idVersionRequest"
+                            "$ref": "#/definitions/httptransport.getInvoiceRequest"
                         }
                     }
                 ],
@@ -876,12 +876,12 @@ const docTemplate = `{
                 "summary": "Delete a usage price with optimistic locking",
                 "parameters": [
                     {
-                        "description": "Identity and version",
+                        "description": "Usage price and parent plan versions",
                         "name": "request",
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/httptransport.idVersionRequest"
+                            "$ref": "#/definitions/httptransport.deleteUsagePriceRequest"
                         }
                     }
                 ],
@@ -2160,6 +2160,23 @@ const docTemplate = `{
                 }
             }
         },
+        "httptransport.deleteUsagePriceRequest": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "plan_id": {
+                    "type": "string"
+                },
+                "plan_version": {
+                    "type": "integer"
+                },
+                "version": {
+                    "type": "integer"
+                }
+            }
+        },
         "httptransport.finalizeInvoiceRequest": {
             "type": "object",
             "required": [
@@ -2180,6 +2197,23 @@ const docTemplate = `{
                 },
                 "version": {
                     "type": "integer"
+                }
+            }
+        },
+        "httptransport.getInvoiceRequest": {
+            "type": "object",
+            "required": [
+                "application_id"
+            ],
+            "properties": {
+                "application_id": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "tenant_id": {
+                    "type": "string"
                 }
             }
         },
@@ -2226,20 +2260,6 @@ const docTemplate = `{
                 },
                 "tenant_id": {
                     "type": "string"
-                }
-            }
-        },
-        "httptransport.idVersionRequest": {
-            "type": "object",
-            "properties": {
-                "id": {
-                    "type": "string"
-                },
-                "tenant_id": {
-                    "type": "string"
-                },
-                "version": {
-                    "type": "integer"
                 }
             }
         },

@@ -525,6 +525,17 @@ definitions:
     required:
     - application_id
     type: object
+  httptransport.deleteUsagePriceRequest:
+    properties:
+      id:
+        type: string
+      plan_id:
+        type: string
+      plan_version:
+        type: integer
+      version:
+        type: integer
+    type: object
   httptransport.finalizeInvoiceRequest:
     properties:
       application_id:
@@ -537,6 +548,17 @@ definitions:
         type: string
       version:
         type: integer
+    required:
+    - application_id
+    type: object
+  httptransport.getInvoiceRequest:
+    properties:
+      application_id:
+        type: string
+      id:
+        type: string
+      tenant_id:
+        type: string
     required:
     - application_id
     type: object
@@ -569,15 +591,6 @@ definitions:
         type: string
     required:
     - application_id
-    type: object
-  httptransport.idVersionRequest:
-    properties:
-      id:
-        type: string
-      tenant_id:
-        type: string
-      version:
-        type: integer
     type: object
   httptransport.invoicePeriodRequest:
     properties:
@@ -820,7 +833,7 @@ paths:
         name: request
         required: true
         schema:
-          $ref: '#/definitions/httptransport.idVersionRequest'
+          $ref: '#/definitions/httptransport.getInvoiceRequest'
       produces:
       - application/json
       responses:
@@ -1230,12 +1243,12 @@ paths:
       consumes:
       - application/json
       parameters:
-      - description: Identity and version
+      - description: Usage price and parent plan versions
         in: body
         name: request
         required: true
         schema:
-          $ref: '#/definitions/httptransport.idVersionRequest'
+          $ref: '#/definitions/httptransport.deleteUsagePriceRequest'
       produces:
       - application/json
       responses:

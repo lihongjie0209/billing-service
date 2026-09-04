@@ -204,14 +204,20 @@ func (s *Service) UpsertUsagePrice(ctx context.Context, value UsagePrice, expect
 	})
 	return value, translate(err)
 }
-func (s *Service) DeleteUsagePrice(ctx context.Context, id string, version int64) error {
+func (s *Service) DeleteUsagePrice(ctx context.Context, id string, version int64, planID string, planVersion int64) error {
 	if _, err := actor(ctx); err != nil {
 		return err
 	}
-	if id == "" || version < 1 {
-		return apperror.Invalid("id and positive version are required", nil)
+	planID = strings.TrimSpace(planID)
+	if id == "" || version < 1 || planID == "" || planVersion < 1 {
+		return apperror.Invalid("id, version, plan_id and plan_version are required", nil)
 	}
-	return translate(s.transactor.Within(ctx, nil, func(tx *sqlx.Tx) error { return s.repository.DeleteUsagePrice(ctx, tx, id, version) }))
+	return translate(s.transactor.Within(ctx, nil, func(tx *sqlx.Tx) error {
+		if _, err := s.repository.LockActivePlan(ctx, tx, planID, planVersion); err != nil {
+			return err
+		}
+		return s.repository.DeleteUsagePrice(ctx, tx, id, version)
+	}))
 }
 
 func (s *Service) CreateSubscription(ctx context.Context, tenantID, applicationID, planID string, planVersion int64, startsAt time.Time, externalReference string) (Subscription, error) {
