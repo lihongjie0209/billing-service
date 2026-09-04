@@ -2144,6 +2144,9 @@ const docTemplate = `{
                 "invoice_id": {
                     "type": "string"
                 },
+                "invoice_version": {
+                    "type": "integer"
+                },
                 "payment_method_reference": {
                     "type": "string"
                 },

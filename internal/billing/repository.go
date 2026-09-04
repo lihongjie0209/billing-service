@@ -36,6 +36,7 @@ type Repository interface {
 	CreateInvoice(context.Context, sqlx.ExtContext, Invoice, []InvoiceLine) error
 	UpdateInvoice(context.Context, sqlx.ExtContext, Invoice, int64) error
 	GetInvoice(context.Context, string, string, string) (Invoice, []InvoiceLine, error)
+	LockPayableInvoice(context.Context, sqlx.ExtContext, string, string, string, int64) (Invoice, error)
 	ListInvoices(context.Context, string, string, string, time.Time, time.Time, int, int) ([]Invoice, int64, error)
 	ListPayableInvoices(context.Context, string, string, string, int, int) ([]Invoice, int64, error)
 	ClaimPayment(context.Context, sqlx.ExtContext, PaymentAttempt) (string, bool, error)
@@ -236,6 +237,21 @@ func (r *SQLRepository) GetInvoice(ctx context.Context, tenantID, applicationID,
 	lines := []InvoiceLine{}
 	err = r.db.SelectContext(ctx, &lines, r.db.Rebind("SELECT "+invoiceLineColumns+" FROM invoice_lines WHERE invoice_id=? ORDER BY id"), id)
 	return v, lines, err
+}
+
+func (r *SQLRepository) LockPayableInvoice(ctx context.Context, e sqlx.ExtContext, tenantID, applicationID, id string, expectedVersion int64) (Invoice, error) {
+	var value Invoice
+	err := sqlx.GetContext(ctx, e, &value, r.db.Rebind("SELECT "+invoiceColumns+" FROM invoices WHERE tenant_id=? AND application_id=? AND id=? FOR UPDATE"), tenantID, applicationID, id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Invoice{}, ErrNotFound
+	}
+	if err != nil {
+		return Invoice{}, err
+	}
+	if value.Version != expectedVersion || value.Status != "open" || value.TotalMinor-value.PaidMinor <= 0 {
+		return Invoice{}, ErrStaleVersion
+	}
+	return value, nil
 }
 func (r *SQLRepository) ListInvoices(ctx context.Context, tenantID, applicationID, status string, from, to time.Time, limit, offset int) ([]Invoice, int64, error) {
 	where, args := "tenant_id=? AND application_id=?", []any{tenantID, applicationID}

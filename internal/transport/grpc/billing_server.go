@@ -103,7 +103,7 @@ func (s *billingServer) ListInvoices(ctx context.Context, r *billingv1.ListInvoi
 	return &billingv1.ListInvoicesResponse{Invoices: items, Page: pageResult(values.Total, values.Page, values.PageSize)}, billingError(err)
 }
 func (s *billingServer) CreatePaymentAttempt(ctx context.Context, r *billingv1.CreatePaymentAttemptRequest) (*billingv1.CreatePaymentAttemptResponse, error) {
-	v, duplicate, err := s.service.CreatePaymentAttempt(ctx, r.GetTenantId(), r.GetApplicationId(), r.GetInvoiceId(), r.GetProvider(), r.GetPaymentMethodReference(), r.GetIdempotencyKey())
+	v, duplicate, err := s.service.CreatePaymentAttempt(ctx, r.GetTenantId(), r.GetApplicationId(), r.GetInvoiceId(), r.GetInvoiceVersion(), r.GetProvider(), r.GetPaymentMethodReference(), r.GetIdempotencyKey())
 	return &billingv1.CreatePaymentAttemptResponse{PaymentAttempt: billing.ToProtoPayment(v), Duplicate: duplicate}, billingError(err)
 }
 func (s *billingServer) GetPaymentAttempt(ctx context.Context, r *billingv1.GetPaymentAttemptRequest) (*billingv1.GetPaymentAttemptResponse, error) {

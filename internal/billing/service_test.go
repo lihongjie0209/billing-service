@@ -48,11 +48,12 @@ func (transactionStub) Within(_ context.Context, _ *sql.TxOptions, fn func(*sqlx
 
 type paymentRepository struct {
 	Repository
-	payment        PaymentAttempt
-	invoice        Invoice
-	claim          bool
-	updatedPayment PaymentAttempt
-	updatedInvoice Invoice
+	payment              PaymentAttempt
+	invoice              Invoice
+	claim                bool
+	updatedPayment       PaymentAttempt
+	updatedInvoice       Invoice
+	lockedInvoiceVersion int64
 }
 
 type planImportRepository struct {
@@ -369,6 +370,10 @@ func (r *paymentRepository) ClaimPayment(_ context.Context, _ sqlx.ExtContext, v
 func (r *paymentRepository) GetInvoice(context.Context, string, string, string) (Invoice, []InvoiceLine, error) {
 	return r.invoice, nil, nil
 }
+func (r *paymentRepository) LockPayableInvoice(_ context.Context, _ sqlx.ExtContext, _, _, _ string, version int64) (Invoice, error) {
+	r.lockedInvoiceVersion = version
+	return r.invoice, nil
+}
 func (r *paymentRepository) ClaimProviderEvent(context.Context, sqlx.ExtContext, string, string, string, Audit) (bool, error) {
 	return r.claim, nil
 }
@@ -403,11 +408,11 @@ func TestCreatePaymentAttemptCallsGatewayAfterClaim(t *testing.T) {
 	service := newTestService(t, repository, nil)
 	service.transactor, service.gateway, service.now = transactionStub{}, gateway, func() time.Time { return now }
 	ctx := platformprincipal.WithContext(t.Context(), platformprincipal.Principal{ID: "user-1", Type: platformprincipal.TypeUser, TenantID: "tenant-1"})
-	payment, duplicate, err := service.CreatePaymentAttempt(ctx, "tenant-1", "app-1", "invoice-1", "demo", "payment-method-secret", "payment-key")
+	payment, duplicate, err := service.CreatePaymentAttempt(ctx, "tenant-1", "app-1", "invoice-1", 1, "demo", "payment-method-secret", "payment-key")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if duplicate || payment.Status != "succeeded" || gateway.command.PaymentMethodReference != "payment-method-secret" || gateway.command.AmountMinor != 900 {
+	if duplicate || payment.Status != "succeeded" || repository.lockedInvoiceVersion != 1 || gateway.command.PaymentMethodReference != "payment-method-secret" || gateway.command.AmountMinor != 900 {
 		t.Fatalf("payment=%+v duplicate=%v command=%+v", payment, duplicate, gateway.command)
 	}
 }
@@ -437,7 +442,7 @@ func TestCreatePaymentAttemptReplaysCompletedResultAfterInvoicePaid(t *testing.T
 	repository := &paymentRepository{payment: PaymentAttempt{ID: "payment-1", InvoiceID: "invoice-1", TenantID: "tenant-1", ApplicationID: "app-1", Provider: "demo", IdempotencyKey: "payment-key", RequestHash: hashParts("tenant-1", "app-1", "invoice-1", "demo", "payment-method-secret"), Status: "succeeded"}, invoice: Invoice{ID: "invoice-1", TenantID: "tenant-1", ApplicationID: "app-1", TotalMinor: 900, PaidMinor: 900, Status: "paid"}}
 	service := newTestService(t, repository, nil)
 	ctx := platformprincipal.WithContext(t.Context(), platformprincipal.Principal{ID: "user-1", Type: platformprincipal.TypeUser, TenantID: "tenant-1"})
-	payment, duplicate, err := service.CreatePaymentAttempt(ctx, "tenant-1", "app-1", "invoice-1", "demo", "payment-method-secret", "payment-key")
+	payment, duplicate, err := service.CreatePaymentAttempt(ctx, "tenant-1", "app-1", "invoice-1", 1, "demo", "payment-method-secret", "payment-key")
 	if err != nil || !duplicate || payment.Status != "succeeded" {
 		t.Fatalf("payment=%+v duplicate=%v err=%v", payment, duplicate, err)
 	}

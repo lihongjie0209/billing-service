@@ -138,6 +138,7 @@ type createPaymentRequest struct {
 	TenantID               string `json:"tenant_id"`
 	ApplicationID          string `json:"application_id" binding:"required"`
 	InvoiceID              string `json:"invoice_id"`
+	InvoiceVersion         int64  `json:"invoice_version"`
 	Provider               string `json:"provider"`
 	PaymentMethodReference string `json:"payment_method_reference"`
 	IdempotencyKey         string `json:"idempotency_key"`
@@ -374,7 +375,7 @@ func (h *Handler) CreatePaymentAttempt(c *gin.Context) {
 	if !ok {
 		return
 	}
-	v, d, e := h.billing.CreatePaymentAttempt(c.Request.Context(), r.TenantID, r.ApplicationID, r.InvoiceID, r.Provider, r.PaymentMethodReference, r.IdempotencyKey)
+	v, d, e := h.billing.CreatePaymentAttempt(c.Request.Context(), r.TenantID, r.ApplicationID, r.InvoiceID, r.InvoiceVersion, r.Provider, r.PaymentMethodReference, r.IdempotencyKey)
 	result(h, c, CreatePaymentAttemptBody{PaymentAttempt: paymentAttemptBody(v), Duplicate: d}, e)
 }
 func (h *Handler) ListPayableInvoices(c *gin.Context) {

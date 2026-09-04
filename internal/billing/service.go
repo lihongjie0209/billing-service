@@ -641,7 +641,7 @@ func (s *Service) ListPayableInvoices(ctx context.Context, tenantID, application
 	return Page[Invoice]{Items: items, Total: total, Page: page, PageSize: size}, translate(err)
 }
 
-func (s *Service) CreatePaymentAttempt(ctx context.Context, tenantID, applicationID, invoiceID, provider, paymentMethodReference, key string) (PaymentAttempt, bool, error) {
+func (s *Service) CreatePaymentAttempt(ctx context.Context, tenantID, applicationID, invoiceID string, invoiceVersion int64, provider, paymentMethodReference, key string) (PaymentAttempt, bool, error) {
 	actorID, err := actor(ctx)
 	if err != nil {
 		return PaymentAttempt{}, false, err
@@ -655,8 +655,8 @@ func (s *Service) CreatePaymentAttempt(ctx context.Context, tenantID, applicatio
 	provider = strings.ToLower(strings.TrimSpace(provider))
 	paymentMethodReference = strings.TrimSpace(paymentMethodReference)
 	key = strings.TrimSpace(key)
-	if invoiceID == "" || provider == "" || paymentMethodReference == "" || key == "" {
-		return PaymentAttempt{}, false, apperror.Invalid("invoice_id, provider, payment_method_reference and idempotency_key are required", nil)
+	if invoiceID == "" || invoiceVersion < 1 || provider == "" || paymentMethodReference == "" || key == "" {
+		return PaymentAttempt{}, false, apperror.Invalid("invoice_id, invoice_version, provider, payment_method_reference and idempotency_key are required", nil)
 	}
 	requestHash := hashParts(tenantID, applicationID, invoiceID, provider, paymentMethodReference)
 	if existing, findErr := s.repository.GetPaymentByKey(ctx, key); findErr == nil {
@@ -678,19 +678,18 @@ func (s *Service) CreatePaymentAttempt(ctx context.Context, tenantID, applicatio
 	} else if !errors.Is(findErr, ErrNotFound) {
 		return PaymentAttempt{}, false, translate(findErr)
 	}
-	invoice, _, err := s.repository.GetInvoice(ctx, tenantID, applicationID, invoiceID)
-	if err != nil {
-		return PaymentAttempt{}, false, translate(err)
-	}
-	outstanding := invoice.TotalMinor - invoice.PaidMinor
-	if invoice.Status != "open" || outstanding <= 0 {
-		return PaymentAttempt{}, false, apperror.Conflict("invoice is not payable", nil)
-	}
 	now := s.now()
-	value := PaymentAttempt{ID: uuid.NewString(), InvoiceID: invoice.ID, TenantID: tenantID, ApplicationID: applicationID, Provider: provider, IdempotencyKey: key, RequestHash: requestHash, Currency: invoice.Currency, AmountMinor: outstanding, Status: "pending", Audit: newAudit(actorID, now)}
+	var invoice Invoice
+	var value PaymentAttempt
 	existingID := ""
 	created := false
 	err = s.transactor.Within(ctx, nil, func(tx *sqlx.Tx) error {
+		var lockErr error
+		invoice, lockErr = s.repository.LockPayableInvoice(ctx, tx, tenantID, applicationID, invoiceID, invoiceVersion)
+		if lockErr != nil {
+			return lockErr
+		}
+		value = PaymentAttempt{ID: uuid.NewString(), InvoiceID: invoice.ID, TenantID: tenantID, ApplicationID: applicationID, Provider: provider, IdempotencyKey: key, RequestHash: requestHash, Currency: invoice.Currency, AmountMinor: invoice.TotalMinor - invoice.PaidMinor, Status: "pending", Audit: newAudit(actorID, now)}
 		id, claimed, claimErr := s.repository.ClaimPayment(ctx, tx, value)
 		if claimErr != nil {
 			return claimErr
