@@ -53,7 +53,7 @@ func listPlansDocs() {}
 // @Param request body listAvailablePlansRequest true "Search and pagination"
 // @Success 200 {object} Response{body=PlanPageBody}
 // @Router /api/v1/subscriptions/plans/list [post]
-func listAvailablePlansDocs() {}
+func listAvailablePlansDocs() {} //nolint:unused // Swagger discovers annotation holders during generation.
 
 // upsertUsagePriceDocs godoc
 // @Summary Create or update a metered usage price
