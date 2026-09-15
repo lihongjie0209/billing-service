@@ -34,6 +34,8 @@ type Config struct {
 	Idempotency     Idempotency     `mapstructure:"idempotency"`
 	Outbound        Outbound        `mapstructure:"outbound"`
 	EventBus        EventBus        `mapstructure:"event_bus"`
+	OperationLog    OperationLog    `mapstructure:"operation_log"`
+	SecurityLog     SecurityLog     `mapstructure:"security_log"`
 	ServiceRegistry ServiceRegistry `mapstructure:"service_registry"`
 }
 
@@ -203,6 +205,18 @@ type EventBus struct {
 	PublishedRetention time.Duration `mapstructure:"published_retention"`
 	CleanupInterval    time.Duration `mapstructure:"cleanup_interval"`
 	CleanupBatchSize   int           `mapstructure:"cleanup_batch_size"`
+}
+type OperationLog struct {
+	Enabled         bool   `mapstructure:"enabled"`
+	Subject         string `mapstructure:"subject"`
+	MaxPayloadBytes int    `mapstructure:"max_payload_bytes"`
+}
+type SecurityLog struct {
+	Enabled         bool   `mapstructure:"enabled"`
+	Subject         string `mapstructure:"subject"`
+	MaxPayloadBytes int    `mapstructure:"max_payload_bytes"`
+	HashKey         string `mapstructure:"hash_key"`
+	FailClosed      bool   `mapstructure:"fail_closed"`
 }
 type ServiceRegistry struct {
 	Enabled           bool          `mapstructure:"enabled"`
@@ -457,6 +471,14 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("event_bus.published_retention", "168h")
 	v.SetDefault("event_bus.cleanup_interval", "1h")
 	v.SetDefault("event_bus.cleanup_batch_size", 1000)
+	v.SetDefault("operation_log.enabled", false)
+	v.SetDefault("operation_log.subject", "platform.operation-log.recorded.v1")
+	v.SetDefault("operation_log.max_payload_bytes", 16384)
+	v.SetDefault("security_log.enabled", false)
+	v.SetDefault("security_log.subject", "platform.security-log.recorded.v1")
+	v.SetDefault("security_log.max_payload_bytes", 16384)
+	v.SetDefault("security_log.hash_key", "")
+	v.SetDefault("security_log.fail_closed", true)
 	v.SetDefault("service_registry.enabled", false)
 	v.SetDefault("service_registry.target", "127.0.0.1:9092")
 	v.SetDefault("service_registry.psk", "")
@@ -596,6 +618,18 @@ func (c Config) Validate() error {
 	}
 	if c.EventBus.Enabled && (len(c.EventBus.URLs) == 0 || c.EventBus.StreamName != "PLATFORM_EVENTS" || len(c.EventBus.Subjects) != 1 || c.EventBus.Subjects[0] != "platform.>" || (c.EventBus.Storage != "file" && c.EventBus.Storage != "memory") || c.EventBus.MaxAge <= 0 || c.EventBus.DuplicateWindow <= 0 || c.EventBus.ConnectTimeout <= 0 || c.EventBus.ReconnectWait <= 0 || c.EventBus.PublishTimeout <= 0 || c.EventBus.ConsumerAckWait <= 0 || c.EventBus.ConsumerMaxDeliver <= 0 || c.EventBus.DispatchInterval <= 0 || c.EventBus.DispatchBatchSize <= 0 || c.EventBus.DispatchLease <= 0 || c.EventBus.DispatchRetryDelay <= 0 || c.EventBus.PublishedRetention < c.EventBus.MaxAge || c.EventBus.CleanupInterval <= 0 || c.EventBus.CleanupBatchSize <= 0) {
 		return errors.New("enabled event_bus requires canonical PLATFORM_EVENTS/platform.>, positive dispatch/cleanup settings, and published retention at least max_age")
+	}
+	if c.OperationLog.Enabled && !c.EventBus.Enabled {
+		return errors.New("enabled operation_log requires event_bus")
+	}
+	if c.OperationLog.Enabled && (strings.TrimSpace(c.OperationLog.Subject) == "" || c.OperationLog.MaxPayloadBytes < 256 || c.OperationLog.MaxPayloadBytes > 1<<20) {
+		return errors.New("enabled operation_log requires subject and max_payload_bytes between 256 bytes and 1 MiB")
+	}
+	if c.SecurityLog.Enabled && !c.EventBus.Enabled {
+		return errors.New("enabled security_log requires event_bus")
+	}
+	if c.SecurityLog.Enabled && (strings.TrimSpace(c.SecurityLog.Subject) == "" || c.SecurityLog.MaxPayloadBytes < 256 || c.SecurityLog.MaxPayloadBytes > 1<<20 || len(c.SecurityLog.HashKey) < 32) {
+		return errors.New("enabled security_log requires subject, hash_key of at least 32 bytes, and max_payload_bytes between 256 bytes and 1 MiB")
 	}
 	if c.ServiceRegistry.Enabled {
 		if c.ServiceRegistry.Target == "" || len(c.ServiceRegistry.PSK) < 32 || c.ServiceRegistry.InstanceID == "" || c.ServiceRegistry.Endpoint == "" || c.ServiceRegistry.Lease <= 0 || c.ServiceRegistry.HeartbeatInterval <= 0 || c.ServiceRegistry.HeartbeatInterval >= c.ServiceRegistry.Lease {

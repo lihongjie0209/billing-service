@@ -64,6 +64,12 @@ idempotency:
 observability:
   metrics_enabled: true
   tracing_enabled: false
+event_bus:
+  enabled: true
+operation_log:
+  enabled: true
+security_log:
+  enabled: true
 service_registry:
   enabled: true
   target: service-registry-service.platform.svc.cluster.local:9090

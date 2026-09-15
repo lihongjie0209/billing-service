@@ -10,7 +10,10 @@ import (
 	"github.com/jmoiron/sqlx"
 	"github.com/lihongjie0209/billing-service/internal/config"
 	platformeventbus "github.com/lihongjie0209/microservice-platform-go/eventbus"
+	"github.com/lihongjie0209/microservice-platform-go/operationlog"
 	platformoutbox "github.com/lihongjie0209/microservice-platform-go/outbox"
+	"github.com/lihongjie0209/microservice-platform-go/securitylog"
+	commonv1 "github.com/lihongjie0209/platform-protos/gen/go/platform/common/v1"
 	"go.uber.org/fx"
 )
 
@@ -27,7 +30,7 @@ func newBillingOutboxStore(db *sqlx.DB) (*platformoutbox.SQLStore, error) {
 	if db == nil {
 		return nil, nil
 	}
-	return platformoutbox.NewSQLStore(db, "billing_outbox_events")
+	return platformoutbox.NewSQLStore(db, "billing_outbox_events", platformoutbox.WithWorkerAuditActor("billing-service:outbox"))
 }
 func newBillingEventRuntime(lc fx.Lifecycle, cfg config.Config, store *platformoutbox.SQLStore, logger *slog.Logger) *billingEventRuntime {
 	r := &billingEventRuntime{config: cfg, store: store, logger: logger}
@@ -101,5 +104,17 @@ func (r *billingEventRuntime) stop(context.Context) error {
 	}
 	return nil
 }
+func (r *billingEventRuntime) Publish(ctx context.Context, subject string, envelope *commonv1.EventEnvelope) error {
+	if r == nil || r.bus == nil {
+		return errors.New("billing event bus is unavailable")
+	}
+	return r.bus.Publish(ctx, subject, envelope)
+}
+func newOperationLogRecorder(cfg config.Config, publisher *billingEventRuntime) (operationlog.Recorder, error) {
+	return operationlog.New(operationlog.Config{Enabled: cfg.OperationLog.Enabled, Subject: cfg.OperationLog.Subject, MaxPayloadBytes: cfg.OperationLog.MaxPayloadBytes}, publisher)
+}
+func newSecurityLogRecorder(cfg config.Config, publisher *billingEventRuntime) (securitylog.Recorder, error) {
+	return securitylog.New(securitylog.Config{Enabled: cfg.SecurityLog.Enabled, Subject: cfg.SecurityLog.Subject, MaxPayloadBytes: cfg.SecurityLog.MaxPayloadBytes, HashKey: cfg.SecurityLog.HashKey, FailClosed: cfg.SecurityLog.FailClosed}, publisher)
+}
 
-var EventBusModule = fx.Module("billing-event-bus", fx.Provide(newBillingOutboxStore, newBillingEventRuntime), fx.Invoke(func(*billingEventRuntime) {}))
+var EventBusModule = fx.Module("billing-event-bus", fx.Provide(newBillingOutboxStore, newBillingEventRuntime, newOperationLogRecorder, newSecurityLogRecorder), fx.Invoke(func(*billingEventRuntime) {}))

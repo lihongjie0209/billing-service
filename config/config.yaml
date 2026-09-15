@@ -162,6 +162,18 @@ event_bus:
   cleanup_interval: 1h
   cleanup_batch_size: 1000
 
+operation_log:
+  enabled: false
+  subject: platform.operation-log.recorded.v1
+  max_payload_bytes: 16384
+
+security_log:
+  enabled: false
+  subject: platform.security-log.recorded.v1
+  max_payload_bytes: 16384
+  hash_key: ""
+  fail_closed: true
+
 service_registry:
   enabled: false
   target: 127.0.0.1:9092

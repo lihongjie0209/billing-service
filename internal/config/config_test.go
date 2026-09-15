@@ -161,6 +161,38 @@ func TestConfigRejectsOutboxRetentionShorterThanReplayWindow(t *testing.T) {
 	}
 }
 
+func TestConfigRequiresEventBusForAuditRecorders(t *testing.T) {
+	t.Parallel()
+	base, err := LoadWithProfile("../../config/config.yaml", "development")
+	if err != nil {
+		t.Fatal(err)
+	}
+	operation := base
+	operation.OperationLog.Enabled = true
+	if err := operation.Validate(); err == nil || !strings.Contains(err.Error(), "operation_log requires event_bus") {
+		t.Fatalf("operation log Validate() error = %v", err)
+	}
+	security := base
+	security.SecurityLog.Enabled = true
+	if err := security.Validate(); err == nil || !strings.Contains(err.Error(), "security_log requires event_bus") {
+		t.Fatalf("security log Validate() error = %v", err)
+	}
+}
+
+func TestConfigRequiresStrongSecurityLogHashKey(t *testing.T) {
+	t.Parallel()
+	cfg, err := LoadWithProfile("../../config/config.yaml", "development")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.EventBus.Enabled = true
+	cfg.SecurityLog.Enabled = true
+	cfg.SecurityLog.HashKey = "short"
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "hash_key") {
+		t.Fatalf("Validate() error = %v", err)
+	}
+}
+
 func TestConfigRequiresApplicationUpstreamWhenDatabaseEnabled(t *testing.T) {
 	t.Parallel()
 	cfg, err := LoadWithProfile("../../config/config.yaml", "development")
