@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jmoiron/sqlx"
 	"github.com/lihongjie0209/billing-service/internal/billing"
 	"github.com/lihongjie0209/billing-service/internal/config"
 	appdb "github.com/lihongjie0209/billing-service/internal/database"
@@ -87,6 +88,27 @@ func TestRepositoryAndMigrations(t *testing.T) {
 			if err != nil {
 				t.Fatalf("activate plan: %v", err)
 			}
+			if plan.Version != 2 {
+				t.Fatalf("database-owned plan version = %d, want 2", plan.Version)
+			}
+			price, err := service.UpsertUsagePrice(actorCtx, billing.UsagePrice{PlanID: plan.ID, MeterCode: "requests", UnitQuantity: 1, UnitAmountMinor: 1, PricingModel: "per_unit"}, 0, plan.Version)
+			if err != nil {
+				t.Fatalf("create usage price: %v", err)
+			}
+			if err := service.DeleteUsagePrice(actorCtx, price.ID, price.Version, plan.ID, plan.Version); err != nil {
+				t.Fatalf("logical delete usage price: %v", err)
+			}
+			if prices, err := repository.ListUsagePrices(ctx, plan.ID); err != nil || len(prices) != 0 {
+				t.Fatalf("deleted usage prices = %+v, err=%v", prices, err)
+			}
+			var deletedBy string
+			var deletedVersion int64
+			if err := db.QueryRowxContext(ctx, db.Rebind("SELECT deleted_by,version FROM usage_prices WHERE id=?"), price.ID).Scan(&deletedBy, &deletedVersion); err != nil || deletedBy != "integration-service" || deletedVersion != 2 {
+				t.Fatalf("usage price audit deleted_by=%q version=%d err=%v", deletedBy, deletedVersion, err)
+			}
+			if _, err := db.ExecContext(ctx, db.Rebind("DELETE FROM plans WHERE id=?"), plan.ID); err == nil {
+				t.Fatal("physical delete of audited plan must fail")
+			}
 			subscription, err := service.CreateSubscription(actorCtx, "tenant-integration", "app-integration", plan.ID, plan.Version, time.Now(), "")
 			if err != nil {
 				t.Fatalf("create subscription: %v", err)
@@ -102,12 +124,24 @@ func TestRepositoryAndMigrations(t *testing.T) {
 			now := time.Now()
 			audit := billing.Audit{Version: 1, CreatedAt: now, UpdatedAt: now, CreatedBy: "integration-service", UpdatedBy: "integration-service"}
 			payment := billing.PaymentAttempt{ID: "payment-" + databaseType, InvoiceID: invoice.Invoice.ID, TenantID: "tenant-integration", ApplicationID: "app-integration", Provider: "test", ProviderPaymentID: "provider-payment", IdempotencyKey: "payment-key-" + databaseType, RequestHash: "payment-hash", Currency: "CNY", AmountMinor: 100, Status: "succeeded", Audit: audit}
-			if _, created, err := repository.ClaimPayment(ctx, db, payment); err != nil || !created {
-				t.Fatalf("claim payment created=%v err=%v", created, err)
+			var paymentCreated bool
+			err = appdb.NewTransactor(db).Within(actorCtx, nil, func(tx *sqlx.Tx) error {
+				_, created, claimErr := repository.ClaimPayment(actorCtx, tx, payment)
+				paymentCreated = created
+				return claimErr
+			})
+			if err != nil || !paymentCreated {
+				t.Fatalf("claim payment created=%v err=%v", paymentCreated, err)
 			}
 			refund := billing.Refund{ID: "refund-" + databaseType, PaymentAttemptID: payment.ID, InvoiceID: invoice.Invoice.ID, TenantID: "tenant-integration", ApplicationID: "app-integration", ProviderRefundID: "provider-refund", IdempotencyKey: "refund-key-" + databaseType, RequestHash: "refund-hash", AmountMinor: 25, Reason: "integration", Status: "succeeded", Audit: audit}
-			if _, created, err := repository.ClaimRefund(ctx, db, refund); err != nil || !created {
-				t.Fatalf("claim refund created=%v err=%v", created, err)
+			var refundCreated bool
+			err = appdb.NewTransactor(db).Within(actorCtx, nil, func(tx *sqlx.Tx) error {
+				_, created, claimErr := repository.ClaimRefund(actorCtx, tx, refund)
+				refundCreated = created
+				return claimErr
+			})
+			if err != nil || !refundCreated {
+				t.Fatalf("claim refund created=%v err=%v", refundCreated, err)
 			}
 			payments, paymentTotal, err := repository.ListPayments(ctx, "tenant-integration", "app-integration", "succeeded", 20, 0)
 			if err != nil || paymentTotal != 1 || len(payments) != 1 || payments[0].ID != payment.ID {
