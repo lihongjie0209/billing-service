@@ -198,7 +198,7 @@ func startDatabase(t *testing.T, ctx context.Context, databaseType string) (stri
 			t.Fatal(err)
 		}
 		testcontainers.CleanupContainer(t, container)
-		dsn, err := container.ConnectionString(ctx, "parseTime=true&loc=Asia%2FShanghai")
+		dsn, err := container.ConnectionString(ctx, "parseTime=true&loc=Asia%2FShanghai&time_zone=%27%2B08%3A00%27")
 		if err != nil {
 			t.Fatal(err)
 		}

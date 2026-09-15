@@ -46,6 +46,10 @@ func Open(ctx context.Context, cfg config.Database) (*sqlx.DB, error) {
 		}
 		connectionConfig.ParseTime = true
 		connectionConfig.Loc = location
+		if connectionConfig.Params == nil {
+			connectionConfig.Params = make(map[string]string)
+		}
+		connectionConfig.Params["time_zone"] = "'+08:00'"
 		db, err = sqlx.Open(driver, connectionConfig.FormatDSN())
 		if err != nil {
 			return nil, fmt.Errorf("open database: %w", err)

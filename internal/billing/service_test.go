@@ -10,7 +10,9 @@ import (
 
 	"github.com/jmoiron/sqlx"
 	"github.com/lihongjie0209/billing-service/internal/apperror"
+	"github.com/lihongjie0209/billing-service/internal/requestid"
 	"github.com/lihongjie0209/microservice-platform-go/appaccess"
+	"github.com/lihongjie0209/microservice-platform-go/operationlog"
 	platformprincipal "github.com/lihongjie0209/microservice-platform-go/principal"
 	commonv1 "github.com/lihongjie0209/platform-protos/gen/go/platform/common/v1"
 	"google.golang.org/protobuf/proto"
@@ -24,6 +26,17 @@ type rejectingApplicationVerifier struct{ err error }
 
 func (v rejectingApplicationVerifier) Verify(context.Context, string, string) error { return v.err }
 
+type operationRecorderStub struct {
+	entry operationlog.Entry
+	err   error
+}
+
+func (*operationRecorderStub) Enabled() bool { return true }
+func (r *operationRecorderStub) Record(_ context.Context, entry operationlog.Entry) error {
+	r.entry = entry
+	return r.err
+}
+
 func newTestService(t *testing.T, repository Repository, usage UsageReader) *Service {
 	t.Helper()
 	service, err := NewService(repository, nil, usage, allowApplicationVerifier{})
@@ -31,6 +44,22 @@ func newTestService(t *testing.T, repository Repository, usage UsageReader) *Ser
 		t.Fatal(err)
 	}
 	return service
+}
+
+func TestCreatePlanRecordsOperation(t *testing.T) {
+	repository := &planImportRepository{}
+	recorder := &operationRecorderStub{}
+	service := newTestService(t, repository, nil)
+	service.transactor = transactionStub{}
+	service.operations = recorder
+	ctx := requestid.WithContext(platformprincipal.WithContext(t.Context(), platformprincipal.Principal{ID: "platform-admin", Type: platformprincipal.TypeUser}), "request-1")
+	created, err := service.CreatePlan(ctx, Plan{Code: "standard", Name: "Standard", Currency: "CNY", BillingInterval: "month", EntitlementsJSON: "{}"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if recorder.entry.Operation != "billing.plan.create" || recorder.entry.ResourceID != created.ID || recorder.entry.RequestID != "request-1" || !recorder.entry.Succeeded || recorder.entry.Duration <= 0 {
+		t.Fatalf("operation entry = %+v", recorder.entry)
+	}
 }
 
 type previewRepository struct {

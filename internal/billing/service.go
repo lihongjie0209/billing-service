@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"math"
 	"regexp"
 	"strings"
@@ -17,8 +18,10 @@ import (
 	"github.com/jmoiron/sqlx"
 	"github.com/lihongjie0209/billing-service/internal/apperror"
 	"github.com/lihongjie0209/billing-service/internal/database"
+	"github.com/lihongjie0209/billing-service/internal/requestid"
 	"github.com/lihongjie0209/microservice-platform-go/appaccess"
 	platformevents "github.com/lihongjie0209/microservice-platform-go/eventbus"
+	"github.com/lihongjie0209/microservice-platform-go/operationlog"
 	platformprincipal "github.com/lihongjie0209/microservice-platform-go/principal"
 	billingv1 "github.com/lihongjie0209/platform-protos/gen/go/platform/billing/v1"
 	"google.golang.org/protobuf/proto"
@@ -37,6 +40,8 @@ type Service struct {
 	usage        UsageReader
 	gateway      PaymentGateway
 	applications appaccess.Verifier
+	operations   operationlog.Recorder
+	logger       *slog.Logger
 	now          func() time.Time
 }
 
@@ -51,16 +56,22 @@ func NewService(repository Repository, transactor *database.Transactor, usage Us
 	return &Service{repository: repository, transactor: transactor, usage: usage, applications: applications, now: time.Now}, nil
 }
 
-func NewRuntimeService(repository Repository, transactor *database.Transactor, usage UsageReader, gateway PaymentGateway, applications appaccess.Verifier) (*Service, error) {
+func NewRuntimeService(repository Repository, transactor *database.Transactor, usage UsageReader, gateway PaymentGateway, applications appaccess.Verifier, operations operationlog.Recorder, logger *slog.Logger) (*Service, error) {
 	service, err := NewService(repository, transactor, usage, applications)
 	if err != nil {
 		return nil, err
 	}
 	service.gateway = gateway
+	service.operations = operations
+	service.logger = logger
 	return service, nil
 }
 
-func (s *Service) CreatePlan(ctx context.Context, value Plan) (Plan, error) {
+func (s *Service) CreatePlan(ctx context.Context, value Plan) (result Plan, resultErr error) {
+	started := time.Now()
+	defer func() {
+		resultErr = s.recordOperation(ctx, "billing.plan.create", "billing_plan", result.ID, "", map[string]any{"code": value.Code}, started, resultErr)
+	}()
 	actorID, err := actor(ctx)
 	if err != nil {
 		return Plan{}, err
@@ -79,7 +90,8 @@ func (s *Service) CreatePlan(ctx context.Context, value Plan) (Plan, error) {
 		}
 		return s.addEvent(ctx, tx, "platform.billing.plan.changed.v1", "platform.billing.v1.PlanChanged", value.ID, "plan", "", "", actorID, now, &billingv1.PlanChangedEvent{Plan: ToProtoPlan(value), ChangeType: "created"})
 	})
-	return value, translate(err)
+	result, resultErr = value, translate(err)
+	return result, resultErr
 }
 
 func normalizeNewPlan(value Plan) (Plan, error) {
@@ -127,7 +139,11 @@ func (s *Service) ImportPlan(ctx context.Context, value Plan) (Plan, bool, error
 func sameImportedPlan(current, candidate Plan) bool {
 	return current.Code == candidate.Code && current.Name == candidate.Name && current.Description == candidate.Description && current.Currency == candidate.Currency && current.BillingInterval == candidate.BillingInterval && current.BaseAmountMinor == candidate.BaseAmountMinor && current.TrialDays == candidate.TrialDays && compactJSON(current.EntitlementsJSON) == compactJSON(candidate.EntitlementsJSON)
 }
-func (s *Service) UpdatePlan(ctx context.Context, value Plan, expected int64) (Plan, error) {
+func (s *Service) UpdatePlan(ctx context.Context, value Plan, expected int64) (result Plan, resultErr error) {
+	started := time.Now()
+	defer func() {
+		resultErr = s.recordOperation(ctx, "billing.plan.update", "billing_plan", value.ID, "", map[string]any{"expected_version": expected}, started, resultErr)
+	}()
 	actorID, err := actor(ctx)
 	if err != nil {
 		return Plan{}, err
@@ -154,7 +170,8 @@ func (s *Service) UpdatePlan(ctx context.Context, value Plan, expected int64) (P
 		}
 		return s.addEvent(ctx, tx, "platform.billing.plan.changed.v1", "platform.billing.v1.PlanChanged", current.ID, "plan", "", "", actorID, current.UpdatedAt, &billingv1.PlanChangedEvent{Plan: ToProtoPlan(current), ChangeType: "updated"})
 	})
-	return current, translate(err)
+	result, resultErr = current, translate(err)
+	return result, resultErr
 }
 func (s *Service) GetPlan(ctx context.Context, id, code string) (Plan, []UsagePrice, error) {
 	v, err := s.repository.GetPlan(ctx, strings.TrimSpace(id), strings.ToLower(strings.TrimSpace(code)))
@@ -172,7 +189,11 @@ func (s *Service) ListPlans(ctx context.Context, status, keyword string, page, s
 	items, total, err := s.repository.ListPlans(ctx, strings.TrimSpace(status), strings.TrimSpace(keyword), size, (page-1)*size)
 	return Page[Plan]{Items: items, Total: total, Page: page, PageSize: size}, translate(err)
 }
-func (s *Service) UpsertUsagePrice(ctx context.Context, value UsagePrice, expected, planVersion int64) (UsagePrice, error) {
+func (s *Service) UpsertUsagePrice(ctx context.Context, value UsagePrice, expected, planVersion int64) (result UsagePrice, resultErr error) {
+	started := time.Now()
+	defer func() {
+		resultErr = s.recordOperation(ctx, "billing.usage_price.upsert", "billing_usage_price", result.ID, "", map[string]any{"plan_id": value.PlanID, "expected_version": expected, "plan_version": planVersion}, started, resultErr)
+	}()
 	actorID, err := actor(ctx)
 	if err != nil {
 		return UsagePrice{}, err
@@ -202,9 +223,14 @@ func (s *Service) UpsertUsagePrice(ctx context.Context, value UsagePrice, expect
 		}
 		return s.repository.UpsertUsagePrice(ctx, tx, value, expected)
 	})
-	return value, translate(err)
+	result, resultErr = value, translate(err)
+	return result, resultErr
 }
-func (s *Service) DeleteUsagePrice(ctx context.Context, id string, version int64, planID string, planVersion int64) error {
+func (s *Service) DeleteUsagePrice(ctx context.Context, id string, version int64, planID string, planVersion int64) (resultErr error) {
+	started := time.Now()
+	defer func() {
+		resultErr = s.recordOperation(ctx, "billing.usage_price.delete", "billing_usage_price", id, "", map[string]any{"plan_id": planID, "expected_version": version, "plan_version": planVersion}, started, resultErr)
+	}()
 	if _, err := actor(ctx); err != nil {
 		return err
 	}
@@ -212,12 +238,13 @@ func (s *Service) DeleteUsagePrice(ctx context.Context, id string, version int64
 	if id == "" || version < 1 || planID == "" || planVersion < 1 {
 		return apperror.Invalid("id, version, plan_id and plan_version are required", nil)
 	}
-	return translate(s.transactor.Within(ctx, nil, func(tx *sqlx.Tx) error {
+	resultErr = translate(s.transactor.Within(ctx, nil, func(tx *sqlx.Tx) error {
 		if _, err := s.repository.LockActivePlan(ctx, tx, planID, planVersion); err != nil {
 			return err
 		}
 		return s.repository.DeleteUsagePrice(ctx, tx, id, version)
 	}))
+	return resultErr
 }
 
 func (s *Service) CreateSubscription(ctx context.Context, tenantID, applicationID, planID string, planVersion int64, startsAt time.Time, externalReference string) (Subscription, error) {
@@ -976,6 +1003,26 @@ func (s *Service) verifyApplication(ctx context.Context, tenantID, applicationID
 		return apperror.Unavailable("application authorization is unavailable", err)
 	}
 	return nil
+}
+
+func (s *Service) recordOperation(ctx context.Context, operation, resourceType, resourceID, applicationID string, request any, started time.Time, resultErr error) error {
+	if s.operations == nil || !s.operations.Enabled() {
+		return resultErr
+	}
+	requestID, _ := requestid.FromContext(ctx)
+	entry := operationlog.Entry{Operation: operation, ResourceType: resourceType, ResourceID: resourceID, ApplicationID: applicationID, Source: "billing-service", Protocol: "internal", Request: request, RequestID: requestID, Duration: time.Since(started), Succeeded: resultErr == nil}
+	if resultErr != nil {
+		entry.ErrorMessage = resultErr.Error()
+	}
+	if err := s.operations.Record(ctx, entry); err != nil {
+		if resultErr == nil {
+			return apperror.Unavailable("operation log unavailable", err)
+		}
+		if s.logger != nil {
+			s.logger.ErrorContext(ctx, "record billing operation", "operation", operation, "error", err)
+		}
+	}
+	return resultErr
 }
 func newAudit(actorID string, now time.Time) Audit {
 	return Audit{Version: 1, CreatedAt: now, UpdatedAt: now, CreatedBy: actorID, UpdatedBy: actorID}
