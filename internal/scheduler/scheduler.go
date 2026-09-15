@@ -9,6 +9,7 @@ import (
 	"github.com/lihongjie0209/billing-service/internal/cache"
 	"github.com/lihongjie0209/billing-service/internal/config"
 	"github.com/lihongjie0209/billing-service/internal/observability"
+	platformprincipal "github.com/lihongjie0209/microservice-platform-go/principal"
 	"github.com/robfig/cron/v3"
 	"go.uber.org/fx"
 )
@@ -56,6 +57,7 @@ type transitionService interface {
 func runSubscriptionTransitions(locker *cache.Locker, service transitionService, logger *slog.Logger) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
+	ctx = platformprincipal.WithContext(ctx, platformprincipal.Principal{ID: "billing-service:scheduler", Type: platformprincipal.TypeSystem})
 	if locker == nil {
 		_, err := service.ApplyDueSubscriptionTransitions(ctx, 100)
 		return err

@@ -82,13 +82,13 @@ func (r *SQLRepository) CreatePlan(ctx context.Context, e sqlx.ExtContext, v Pla
 	return err
 }
 func (r *SQLRepository) UpdatePlan(ctx context.Context, e sqlx.ExtContext, v Plan, expected int64) error {
-	result, err := e.ExecContext(ctx, r.db.Rebind("UPDATE plans SET name=?,description=?,base_amount_minor=?,trial_days=?,status=?,entitlements_json=?,version=version+1,updated_at=?,updated_by=? WHERE id=? AND version=?"), v.Name, v.Description, v.BaseAmountMinor, v.TrialDays, v.Status, v.EntitlementsJSON, v.UpdatedAt, v.UpdatedBy, v.ID, expected)
+	result, err := e.ExecContext(ctx, r.db.Rebind("UPDATE plans SET name=?,description=?,base_amount_minor=?,trial_days=?,status=?,entitlements_json=?,version=version+1,updated_at=?,updated_by=? WHERE id=? AND version=? AND deleted_at IS NULL"), v.Name, v.Description, v.BaseAmountMinor, v.TrialDays, v.Status, v.EntitlementsJSON, v.UpdatedAt, v.UpdatedBy, v.ID, expected)
 	return optimistic(result, err)
 }
 func (r *SQLRepository) GetPlan(ctx context.Context, id, code string) (Plan, error) {
-	query, arg := "SELECT "+planColumns+" FROM plans WHERE id=?", id
+	query, arg := "SELECT "+planColumns+" FROM plans WHERE id=? AND deleted_at IS NULL", id
 	if strings.TrimSpace(id) == "" {
-		query, arg = "SELECT "+planColumns+" FROM plans WHERE code=?", code
+		query, arg = "SELECT "+planColumns+" FROM plans WHERE code=? AND deleted_at IS NULL", code
 	}
 	var v Plan
 	err := r.db.GetContext(ctx, &v, r.db.Rebind(query), arg)
@@ -97,7 +97,7 @@ func (r *SQLRepository) GetPlan(ctx context.Context, id, code string) (Plan, err
 
 func (r *SQLRepository) LockActivePlan(ctx context.Context, e sqlx.ExtContext, id string, expectedVersion int64) (Plan, error) {
 	var value Plan
-	err := sqlx.GetContext(ctx, e, &value, r.db.Rebind("SELECT "+planColumns+" FROM plans WHERE id=? FOR UPDATE"), id)
+	err := sqlx.GetContext(ctx, e, &value, r.db.Rebind("SELECT "+planColumns+" FROM plans WHERE id=? AND deleted_at IS NULL FOR UPDATE"), id)
 	if err != nil {
 		return Plan{}, notFound(err)
 	}
@@ -107,7 +107,7 @@ func (r *SQLRepository) LockActivePlan(ctx context.Context, e sqlx.ExtContext, i
 	return value, nil
 }
 func (r *SQLRepository) ListPlans(ctx context.Context, status, keyword string, limit, offset int) ([]Plan, int64, error) {
-	where, args := "1=1", []any{}
+	where, args := "deleted_at IS NULL", []any{}
 	if status != "" {
 		where += " AND status=?"
 		args = append(args, status)
@@ -131,16 +131,16 @@ func (r *SQLRepository) UpsertUsagePrice(ctx context.Context, e sqlx.ExtContext,
 		_, err := e.ExecContext(ctx, r.db.Rebind("INSERT INTO usage_prices ("+usagePriceColumns+") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)"), v.ID, v.PlanID, v.MeterCode, v.IncludedQuantity, v.UnitQuantity, v.UnitAmountMinor, v.PricingModel, v.TiersJSON, v.Version, v.CreatedAt, v.UpdatedAt, v.CreatedBy, v.UpdatedBy)
 		return err
 	}
-	result, err := e.ExecContext(ctx, r.db.Rebind("UPDATE usage_prices SET included_quantity=?,unit_quantity=?,unit_amount_minor=?,pricing_model=?,tiers_json=?,version=version+1,updated_at=?,updated_by=? WHERE id=? AND version=?"), v.IncludedQuantity, v.UnitQuantity, v.UnitAmountMinor, v.PricingModel, v.TiersJSON, v.UpdatedAt, v.UpdatedBy, v.ID, expected)
+	result, err := e.ExecContext(ctx, r.db.Rebind("UPDATE usage_prices SET included_quantity=?,unit_quantity=?,unit_amount_minor=?,pricing_model=?,tiers_json=?,version=version+1,updated_at=?,updated_by=? WHERE id=? AND version=? AND deleted_at IS NULL"), v.IncludedQuantity, v.UnitQuantity, v.UnitAmountMinor, v.PricingModel, v.TiersJSON, v.UpdatedAt, v.UpdatedBy, v.ID, expected)
 	return optimistic(result, err)
 }
 func (r *SQLRepository) DeleteUsagePrice(ctx context.Context, e sqlx.ExtContext, id string, expected int64) error {
-	result, err := e.ExecContext(ctx, r.db.Rebind("DELETE FROM usage_prices WHERE id=? AND version=?"), id, expected)
+	result, err := e.ExecContext(ctx, r.db.Rebind("UPDATE usage_prices SET deleted_at=CURRENT_TIMESTAMP WHERE id=? AND version=? AND deleted_at IS NULL"), id, expected)
 	return optimistic(result, err)
 }
 func (r *SQLRepository) ListUsagePrices(ctx context.Context, planID string) ([]UsagePrice, error) {
 	items := []UsagePrice{}
-	err := r.db.SelectContext(ctx, &items, r.db.Rebind("SELECT "+usagePriceColumns+" FROM usage_prices WHERE plan_id=? ORDER BY meter_code"), planID)
+	err := r.db.SelectContext(ctx, &items, r.db.Rebind("SELECT "+usagePriceColumns+" FROM usage_prices WHERE plan_id=? AND deleted_at IS NULL ORDER BY meter_code"), planID)
 	return items, err
 }
 func (r *SQLRepository) CreateSubscription(ctx context.Context, e sqlx.ExtContext, v Subscription) error {
@@ -148,16 +148,16 @@ func (r *SQLRepository) CreateSubscription(ctx context.Context, e sqlx.ExtContex
 	return err
 }
 func (r *SQLRepository) UpdateSubscription(ctx context.Context, e sqlx.ExtContext, v Subscription, expected int64) error {
-	result, err := e.ExecContext(ctx, r.db.Rebind("UPDATE subscriptions SET plan_id=?,status=?,current_period_start=?,current_period_end=?,cancel_at_period_end=?,canceled_at=?,pending_plan_id=?,pending_change_at=?,version=version+1,updated_at=?,updated_by=? WHERE id=? AND version=?"), v.PlanID, v.Status, v.CurrentPeriodStart, v.CurrentPeriodEnd, v.CancelAtPeriodEnd, v.CanceledAt, v.PendingPlanID, v.PendingChangeAt, v.UpdatedAt, v.UpdatedBy, v.ID, expected)
+	result, err := e.ExecContext(ctx, r.db.Rebind("UPDATE subscriptions SET plan_id=?,status=?,current_period_start=?,current_period_end=?,cancel_at_period_end=?,canceled_at=?,pending_plan_id=?,pending_change_at=?,version=version+1,updated_at=?,updated_by=? WHERE id=? AND version=? AND deleted_at IS NULL"), v.PlanID, v.Status, v.CurrentPeriodStart, v.CurrentPeriodEnd, v.CancelAtPeriodEnd, v.CanceledAt, v.PendingPlanID, v.PendingChangeAt, v.UpdatedAt, v.UpdatedBy, v.ID, expected)
 	return optimistic(result, err)
 }
 func (r *SQLRepository) GetSubscription(ctx context.Context, tenantID, applicationID, id string) (Subscription, error) {
 	var v Subscription
-	err := r.db.GetContext(ctx, &v, r.db.Rebind("SELECT "+subscriptionColumns+" FROM subscriptions WHERE tenant_id=? AND application_id=? AND id=?"), tenantID, applicationID, id)
+	err := r.db.GetContext(ctx, &v, r.db.Rebind("SELECT "+subscriptionColumns+" FROM subscriptions WHERE tenant_id=? AND application_id=? AND id=? AND deleted_at IS NULL"), tenantID, applicationID, id)
 	return v, notFound(err)
 }
 func (r *SQLRepository) ListSubscriptions(ctx context.Context, tenantID, applicationID, status string, limit, offset int) ([]Subscription, int64, error) {
-	where, args := "tenant_id=? AND application_id=?", []any{tenantID, applicationID}
+	where, args := "tenant_id=? AND application_id=? AND deleted_at IS NULL", []any{tenantID, applicationID}
 	if status != "" {
 		where += " AND status=?"
 		args = append(args, status)
@@ -172,19 +172,28 @@ func (r *SQLRepository) ListSubscriptions(ctx context.Context, tenantID, applica
 	return items, total, err
 }
 func (r *SQLRepository) ClaimSubscription(ctx context.Context, e sqlx.ExtContext, tenantID, applicationID, subscriptionID string, a Audit) error {
-	_, err := e.ExecContext(ctx, r.db.Rebind("INSERT INTO subscription_claims (tenant_id,application_id,subscription_id,version,created_at,updated_at,created_by,updated_by) VALUES (?,?,?,1,?,?,?,?)"), tenantID, applicationID, subscriptionID, a.CreatedAt, a.UpdatedAt, a.CreatedBy, a.UpdatedBy)
+	reactivated, err := e.ExecContext(ctx, r.db.Rebind("UPDATE subscription_claims SET subscription_id=?,deleted_at=NULL WHERE tenant_id=? AND application_id=? AND deleted_at IS NOT NULL"), subscriptionID, tenantID, applicationID)
+	if err != nil {
+		return err
+	}
+	if rows, rowsErr := reactivated.RowsAffected(); rowsErr != nil {
+		return rowsErr
+	} else if rows == 1 {
+		return nil
+	}
+	_, err = e.ExecContext(ctx, r.db.Rebind("INSERT INTO subscription_claims (tenant_id,application_id,subscription_id,version,created_at,updated_at,created_by,updated_by) VALUES (?,?,?,1,?,?,?,?)"), tenantID, applicationID, subscriptionID, a.CreatedAt, a.UpdatedAt, a.CreatedBy, a.UpdatedBy)
 	if err != nil {
 		return ErrConflict
 	}
 	return nil
 }
 func (r *SQLRepository) ReleaseSubscriptionClaim(ctx context.Context, e sqlx.ExtContext, tenantID, applicationID, subscriptionID string) error {
-	_, err := e.ExecContext(ctx, r.db.Rebind("DELETE FROM subscription_claims WHERE tenant_id=? AND application_id=? AND subscription_id=?"), tenantID, applicationID, subscriptionID)
+	_, err := e.ExecContext(ctx, r.db.Rebind("UPDATE subscription_claims SET deleted_at=CURRENT_TIMESTAMP WHERE tenant_id=? AND application_id=? AND subscription_id=? AND deleted_at IS NULL"), tenantID, applicationID, subscriptionID)
 	return err
 }
 func (r *SQLRepository) ListDueSubscriptions(ctx context.Context, now time.Time, limit int) ([]Subscription, error) {
 	items := []Subscription{}
-	err := r.db.SelectContext(ctx, &items, r.db.Rebind("SELECT "+subscriptionColumns+" FROM subscriptions WHERE (pending_change_at IS NOT NULL AND pending_change_at<=?) OR (cancel_at_period_end=? AND current_period_end<=?) ORDER BY current_period_end,id LIMIT ?"), now, true, now, limit)
+	err := r.db.SelectContext(ctx, &items, r.db.Rebind("SELECT "+subscriptionColumns+" FROM subscriptions WHERE deleted_at IS NULL AND ((pending_change_at IS NOT NULL AND pending_change_at<=?) OR (cancel_at_period_end=? AND current_period_end<=?)) ORDER BY current_period_end,id LIMIT ?"), now, true, now, limit)
 	return items, err
 }
 func (r *SQLRepository) ClaimInvoice(ctx context.Context, e sqlx.ExtContext, key, invoiceID, tenantID, applicationID, requestHash string, a Audit) (string, bool, error) {
@@ -204,7 +213,7 @@ func (r *SQLRepository) ClaimInvoice(ctx context.Context, e sqlx.ExtContext, key
 		return invoiceID, true, nil
 	}
 	var existingID, existingHash string
-	row := e.QueryRowxContext(ctx, r.db.Rebind("SELECT invoice_id,request_hash FROM invoice_generation_keys WHERE idempotency_key=?"), key)
+	row := e.QueryRowxContext(ctx, r.db.Rebind("SELECT invoice_id,request_hash FROM invoice_generation_keys WHERE idempotency_key=? AND deleted_at IS NULL"), key)
 	if err := row.Scan(&existingID, &existingHash); err != nil {
 		return "", false, err
 	}
@@ -227,23 +236,23 @@ func (r *SQLRepository) CreateInvoice(ctx context.Context, e sqlx.ExtContext, v 
 	return nil
 }
 func (r *SQLRepository) UpdateInvoice(ctx context.Context, e sqlx.ExtContext, v Invoice, expected int64) error {
-	result, err := e.ExecContext(ctx, r.db.Rebind("UPDATE invoices SET status=?,paid_minor=?,refunded_minor=?,due_at=?,finalized_at=?,paid_at=?,version=version+1,updated_at=?,updated_by=? WHERE id=? AND version=?"), v.Status, v.PaidMinor, v.RefundedMinor, v.DueAt, v.FinalizedAt, v.PaidAt, v.UpdatedAt, v.UpdatedBy, v.ID, expected)
+	result, err := e.ExecContext(ctx, r.db.Rebind("UPDATE invoices SET status=?,paid_minor=?,refunded_minor=?,due_at=?,finalized_at=?,paid_at=?,version=version+1,updated_at=?,updated_by=? WHERE id=? AND version=? AND deleted_at IS NULL"), v.Status, v.PaidMinor, v.RefundedMinor, v.DueAt, v.FinalizedAt, v.PaidAt, v.UpdatedAt, v.UpdatedBy, v.ID, expected)
 	return optimistic(result, err)
 }
 func (r *SQLRepository) GetInvoice(ctx context.Context, tenantID, applicationID, id string) (Invoice, []InvoiceLine, error) {
 	var v Invoice
-	err := r.db.GetContext(ctx, &v, r.db.Rebind("SELECT "+invoiceColumns+" FROM invoices WHERE tenant_id=? AND application_id=? AND id=?"), tenantID, applicationID, id)
+	err := r.db.GetContext(ctx, &v, r.db.Rebind("SELECT "+invoiceColumns+" FROM invoices WHERE tenant_id=? AND application_id=? AND id=? AND deleted_at IS NULL"), tenantID, applicationID, id)
 	if err != nil {
 		return Invoice{}, nil, notFound(err)
 	}
 	lines := []InvoiceLine{}
-	err = r.db.SelectContext(ctx, &lines, r.db.Rebind("SELECT "+invoiceLineColumns+" FROM invoice_lines WHERE invoice_id=? ORDER BY id"), id)
+	err = r.db.SelectContext(ctx, &lines, r.db.Rebind("SELECT "+invoiceLineColumns+" FROM invoice_lines WHERE invoice_id=? AND deleted_at IS NULL ORDER BY id"), id)
 	return v, lines, err
 }
 
 func (r *SQLRepository) LockPayableInvoice(ctx context.Context, e sqlx.ExtContext, tenantID, applicationID, id string, expectedVersion int64) (Invoice, error) {
 	var value Invoice
-	err := sqlx.GetContext(ctx, e, &value, r.db.Rebind("SELECT "+invoiceColumns+" FROM invoices WHERE tenant_id=? AND application_id=? AND id=? FOR UPDATE"), tenantID, applicationID, id)
+	err := sqlx.GetContext(ctx, e, &value, r.db.Rebind("SELECT "+invoiceColumns+" FROM invoices WHERE tenant_id=? AND application_id=? AND id=? AND deleted_at IS NULL FOR UPDATE"), tenantID, applicationID, id)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Invoice{}, ErrNotFound
 	}
@@ -256,7 +265,7 @@ func (r *SQLRepository) LockPayableInvoice(ctx context.Context, e sqlx.ExtContex
 	return value, nil
 }
 func (r *SQLRepository) ListInvoices(ctx context.Context, tenantID, applicationID, status string, from, to time.Time, limit, offset int) ([]Invoice, int64, error) {
-	where, args := "tenant_id=? AND application_id=?", []any{tenantID, applicationID}
+	where, args := "tenant_id=? AND application_id=? AND deleted_at IS NULL", []any{tenantID, applicationID}
 	if status != "" {
 		where += " AND status=?"
 		args = append(args, status)
@@ -280,7 +289,7 @@ func (r *SQLRepository) ListInvoices(ctx context.Context, tenantID, applicationI
 }
 
 func (r *SQLRepository) ListPayableInvoices(ctx context.Context, tenantID, applicationID, keyword string, limit, offset int) ([]Invoice, int64, error) {
-	where, args := "tenant_id=? AND application_id=? AND status='open'", []any{tenantID, applicationID}
+	where, args := "tenant_id=? AND application_id=? AND status='open' AND deleted_at IS NULL", []any{tenantID, applicationID}
 	if keyword != "" {
 		where += " AND (LOWER(number) LIKE ? OR LOWER(id) LIKE ?)"
 		like := "%" + strings.ToLower(keyword) + "%"
@@ -312,7 +321,7 @@ func (r *SQLRepository) ClaimPayment(ctx context.Context, e sqlx.ExtContext, v P
 		return v.ID, true, nil
 	}
 	var existingID, existingHash string
-	if err := e.QueryRowxContext(ctx, r.db.Rebind("SELECT id,request_hash FROM payment_attempts WHERE idempotency_key=?"), v.IdempotencyKey).Scan(&existingID, &existingHash); err != nil {
+	if err := e.QueryRowxContext(ctx, r.db.Rebind("SELECT id,request_hash FROM payment_attempts WHERE idempotency_key=? AND deleted_at IS NULL"), v.IdempotencyKey).Scan(&existingID, &existingHash); err != nil {
 		return "", false, err
 	}
 	if existingHash != v.RequestHash {
@@ -321,9 +330,9 @@ func (r *SQLRepository) ClaimPayment(ctx context.Context, e sqlx.ExtContext, v P
 	return existingID, false, nil
 }
 func (r *SQLRepository) GetPayment(ctx context.Context, tenantID, applicationID, id string) (PaymentAttempt, error) {
-	query, args := "SELECT "+paymentColumns+" FROM payment_attempts WHERE id=?", []any{id}
+	query, args := "SELECT "+paymentColumns+" FROM payment_attempts WHERE id=? AND deleted_at IS NULL", []any{id}
 	if tenantID != "" {
-		query, args = "SELECT "+paymentColumns+" FROM payment_attempts WHERE tenant_id=? AND application_id=? AND id=?", []any{tenantID, applicationID, id}
+		query, args = "SELECT "+paymentColumns+" FROM payment_attempts WHERE tenant_id=? AND application_id=? AND id=? AND deleted_at IS NULL", []any{tenantID, applicationID, id}
 	}
 	var v PaymentAttempt
 	err := r.db.GetContext(ctx, &v, r.db.Rebind(query), args...)
@@ -331,7 +340,7 @@ func (r *SQLRepository) GetPayment(ctx context.Context, tenantID, applicationID,
 }
 func (r *SQLRepository) LockSuccessfulPayment(ctx context.Context, e sqlx.ExtContext, tenantID, applicationID, id string, expectedVersion int64) (PaymentAttempt, error) {
 	var value PaymentAttempt
-	err := sqlx.GetContext(ctx, e, &value, r.db.Rebind("SELECT "+paymentColumns+" FROM payment_attempts WHERE tenant_id=? AND application_id=? AND id=? FOR UPDATE"), tenantID, applicationID, id)
+	err := sqlx.GetContext(ctx, e, &value, r.db.Rebind("SELECT "+paymentColumns+" FROM payment_attempts WHERE tenant_id=? AND application_id=? AND id=? AND deleted_at IS NULL FOR UPDATE"), tenantID, applicationID, id)
 	if errors.Is(err, sql.ErrNoRows) {
 		return PaymentAttempt{}, ErrNotFound
 	}
@@ -344,7 +353,7 @@ func (r *SQLRepository) LockSuccessfulPayment(ctx context.Context, e sqlx.ExtCon
 	return value, nil
 }
 func (r *SQLRepository) ListPayments(ctx context.Context, tenantID, applicationID, status string, limit, offset int) ([]PaymentAttempt, int64, error) {
-	where, args := "tenant_id=? AND application_id=?", []any{tenantID, applicationID}
+	where, args := "tenant_id=? AND application_id=? AND deleted_at IS NULL", []any{tenantID, applicationID}
 	if status != "" {
 		where += " AND status=?"
 		args = append(args, status)
@@ -360,11 +369,11 @@ func (r *SQLRepository) ListPayments(ctx context.Context, tenantID, applicationI
 }
 func (r *SQLRepository) GetPaymentByKey(ctx context.Context, key string) (PaymentAttempt, error) {
 	var v PaymentAttempt
-	err := r.db.GetContext(ctx, &v, r.db.Rebind("SELECT "+paymentColumns+" FROM payment_attempts WHERE idempotency_key=?"), key)
+	err := r.db.GetContext(ctx, &v, r.db.Rebind("SELECT "+paymentColumns+" FROM payment_attempts WHERE idempotency_key=? AND deleted_at IS NULL"), key)
 	return v, notFound(err)
 }
 func (r *SQLRepository) UpdatePayment(ctx context.Context, e sqlx.ExtContext, v PaymentAttempt, expected int64) error {
-	result, err := e.ExecContext(ctx, r.db.Rebind("UPDATE payment_attempts SET provider_payment_id=?,status=?,failure_code=?,failure_message=?,processed_at=?,version=version+1,updated_at=?,updated_by=? WHERE id=? AND version=?"), v.ProviderPaymentID, v.Status, v.FailureCode, v.FailureMessage, v.ProcessedAt, v.UpdatedAt, v.UpdatedBy, v.ID, expected)
+	result, err := e.ExecContext(ctx, r.db.Rebind("UPDATE payment_attempts SET provider_payment_id=?,status=?,failure_code=?,failure_message=?,processed_at=?,version=version+1,updated_at=?,updated_by=? WHERE id=? AND version=? AND deleted_at IS NULL"), v.ProviderPaymentID, v.Status, v.FailureCode, v.FailureMessage, v.ProcessedAt, v.UpdatedAt, v.UpdatedBy, v.ID, expected)
 	return optimistic(result, err)
 }
 func (r *SQLRepository) ClaimProviderEvent(ctx context.Context, e sqlx.ExtContext, provider, eventID, paymentID string, a Audit) (bool, error) {
@@ -396,7 +405,7 @@ func (r *SQLRepository) ClaimRefund(ctx context.Context, e sqlx.ExtContext, v Re
 		return v.ID, true, nil
 	}
 	var existingID, existingHash string
-	if err := e.QueryRowxContext(ctx, r.db.Rebind("SELECT id,request_hash FROM refunds WHERE idempotency_key=?"), v.IdempotencyKey).Scan(&existingID, &existingHash); err != nil {
+	if err := e.QueryRowxContext(ctx, r.db.Rebind("SELECT id,request_hash FROM refunds WHERE idempotency_key=? AND deleted_at IS NULL"), v.IdempotencyKey).Scan(&existingID, &existingHash); err != nil {
 		return "", false, err
 	}
 	if existingHash != v.RequestHash {
@@ -406,19 +415,19 @@ func (r *SQLRepository) ClaimRefund(ctx context.Context, e sqlx.ExtContext, v Re
 }
 func (r *SQLRepository) GetRefund(ctx context.Context, id string) (Refund, error) {
 	var v Refund
-	err := r.db.GetContext(ctx, &v, r.db.Rebind("SELECT "+refundColumns+" FROM refunds WHERE id=?"), id)
+	err := r.db.GetContext(ctx, &v, r.db.Rebind("SELECT "+refundColumns+" FROM refunds WHERE id=? AND deleted_at IS NULL"), id)
 	return v, notFound(err)
 }
 func (r *SQLRepository) LockInvoiceForRefund(ctx context.Context, e sqlx.ExtContext, tenantID, applicationID, id string) (Invoice, error) {
 	var value Invoice
-	err := sqlx.GetContext(ctx, e, &value, r.db.Rebind("SELECT "+invoiceColumns+" FROM invoices WHERE tenant_id=? AND application_id=? AND id=? FOR UPDATE"), tenantID, applicationID, id)
+	err := sqlx.GetContext(ctx, e, &value, r.db.Rebind("SELECT "+invoiceColumns+" FROM invoices WHERE tenant_id=? AND application_id=? AND id=? AND deleted_at IS NULL FOR UPDATE"), tenantID, applicationID, id)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Invoice{}, ErrNotFound
 	}
 	return value, err
 }
 func (r *SQLRepository) ListRefunds(ctx context.Context, tenantID, applicationID, status string, limit, offset int) ([]Refund, int64, error) {
-	where, args := "tenant_id=? AND application_id=?", []any{tenantID, applicationID}
+	where, args := "tenant_id=? AND application_id=? AND deleted_at IS NULL", []any{tenantID, applicationID}
 	if status != "" {
 		where += " AND status=?"
 		args = append(args, status)

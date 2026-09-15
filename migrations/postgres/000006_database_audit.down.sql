@@ -1,0 +1,23 @@
+DROP TRIGGER IF EXISTS refunds_audit_row ON refunds;
+DROP TRIGGER IF EXISTS payment_provider_events_audit_row ON payment_provider_events;
+DROP TRIGGER IF EXISTS payment_attempts_audit_row ON payment_attempts;
+DROP TRIGGER IF EXISTS invoice_generation_keys_audit_row ON invoice_generation_keys;
+DROP TRIGGER IF EXISTS invoice_lines_audit_row ON invoice_lines;
+DROP TRIGGER IF EXISTS invoices_audit_row ON invoices;
+DROP TRIGGER IF EXISTS subscription_claims_audit_row ON subscription_claims;
+DROP TRIGGER IF EXISTS subscriptions_audit_row ON subscriptions;
+DROP TRIGGER IF EXISTS usage_prices_audit_row ON usage_prices;
+DROP TRIGGER IF EXISTS plans_audit_row ON plans;
+DROP FUNCTION IF EXISTS billing_audit_row();
+
+ALTER TABLE billing_outbox_events DROP COLUMN deleted_by, DROP COLUMN deleted_at;
+ALTER TABLE refunds DROP COLUMN deleted_by, DROP COLUMN deleted_at;
+ALTER TABLE payment_provider_events DROP COLUMN deleted_by, DROP COLUMN deleted_at;
+ALTER TABLE payment_attempts DROP COLUMN deleted_by, DROP COLUMN deleted_at;
+ALTER TABLE invoice_generation_keys DROP COLUMN deleted_by, DROP COLUMN deleted_at;
+ALTER TABLE invoice_lines DROP COLUMN deleted_by, DROP COLUMN deleted_at;
+ALTER TABLE invoices DROP COLUMN deleted_by, DROP COLUMN deleted_at;
+ALTER TABLE subscription_claims DROP COLUMN deleted_by, DROP COLUMN deleted_at;
+ALTER TABLE subscriptions DROP COLUMN deleted_by, DROP COLUMN deleted_at;
+ALTER TABLE usage_prices DROP COLUMN deleted_by, DROP COLUMN deleted_at;
+ALTER TABLE plans DROP COLUMN deleted_by, DROP COLUMN deleted_at;

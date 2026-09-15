@@ -1,0 +1,22 @@
+DROP TRIGGER IF EXISTS refunds_audit_bd; DROP TRIGGER IF EXISTS refunds_audit_bu; DROP TRIGGER IF EXISTS refunds_audit_bi;
+DROP TRIGGER IF EXISTS payment_provider_events_audit_bd; DROP TRIGGER IF EXISTS payment_provider_events_audit_bu; DROP TRIGGER IF EXISTS payment_provider_events_audit_bi;
+DROP TRIGGER IF EXISTS payment_attempts_audit_bd; DROP TRIGGER IF EXISTS payment_attempts_audit_bu; DROP TRIGGER IF EXISTS payment_attempts_audit_bi;
+DROP TRIGGER IF EXISTS invoice_generation_keys_audit_bd; DROP TRIGGER IF EXISTS invoice_generation_keys_audit_bu; DROP TRIGGER IF EXISTS invoice_generation_keys_audit_bi;
+DROP TRIGGER IF EXISTS invoice_lines_audit_bd; DROP TRIGGER IF EXISTS invoice_lines_audit_bu; DROP TRIGGER IF EXISTS invoice_lines_audit_bi;
+DROP TRIGGER IF EXISTS invoices_audit_bd; DROP TRIGGER IF EXISTS invoices_audit_bu; DROP TRIGGER IF EXISTS invoices_audit_bi;
+DROP TRIGGER IF EXISTS subscription_claims_audit_bd; DROP TRIGGER IF EXISTS subscription_claims_audit_bu; DROP TRIGGER IF EXISTS subscription_claims_audit_bi;
+DROP TRIGGER IF EXISTS subscriptions_audit_bd; DROP TRIGGER IF EXISTS subscriptions_audit_bu; DROP TRIGGER IF EXISTS subscriptions_audit_bi;
+DROP TRIGGER IF EXISTS usage_prices_audit_bd; DROP TRIGGER IF EXISTS usage_prices_audit_bu; DROP TRIGGER IF EXISTS usage_prices_audit_bi;
+DROP TRIGGER IF EXISTS plans_audit_bd; DROP TRIGGER IF EXISTS plans_audit_bu; DROP TRIGGER IF EXISTS plans_audit_bi;
+
+ALTER TABLE billing_outbox_events DROP COLUMN deleted_by, DROP COLUMN deleted_at;
+ALTER TABLE refunds DROP COLUMN deleted_by, DROP COLUMN deleted_at;
+ALTER TABLE payment_provider_events DROP COLUMN deleted_by, DROP COLUMN deleted_at;
+ALTER TABLE payment_attempts DROP COLUMN deleted_by, DROP COLUMN deleted_at;
+ALTER TABLE invoice_generation_keys DROP COLUMN deleted_by, DROP COLUMN deleted_at;
+ALTER TABLE invoice_lines DROP COLUMN deleted_by, DROP COLUMN deleted_at;
+ALTER TABLE invoices DROP COLUMN deleted_by, DROP COLUMN deleted_at;
+ALTER TABLE subscription_claims DROP COLUMN deleted_by, DROP COLUMN deleted_at;
+ALTER TABLE subscriptions DROP COLUMN deleted_by, DROP COLUMN deleted_at;
+ALTER TABLE usage_prices DROP COLUMN deleted_by, DROP COLUMN deleted_at;
+ALTER TABLE plans DROP COLUMN deleted_by, DROP COLUMN deleted_at;

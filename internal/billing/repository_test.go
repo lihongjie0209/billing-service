@@ -37,7 +37,7 @@ func TestSQLRepository_LockActivePlanRejectsChangedOrInactivePlan(t *testing.T) 
 				"plan-1", "starter", "Starter", "", "CNY", "month", int64(0), int32(0), test.status, `{}`, test.version,
 				now, now, "user-1", "user-1",
 			)
-			mock.ExpectQuery(regexp.QuoteMeta("SELECT " + planColumns + " FROM plans WHERE id=? FOR UPDATE")).
+			mock.ExpectQuery(regexp.QuoteMeta("SELECT " + planColumns + " FROM plans WHERE id=? AND deleted_at IS NULL FOR UPDATE")).
 				WithArgs("plan-1").
 				WillReturnRows(rows)
 
