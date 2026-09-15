@@ -23,6 +23,7 @@ import (
 	platformevents "github.com/lihongjie0209/microservice-platform-go/eventbus"
 	"github.com/lihongjie0209/microservice-platform-go/operationlog"
 	platformprincipal "github.com/lihongjie0209/microservice-platform-go/principal"
+	"github.com/lihongjie0209/microservice-platform-go/securitylog"
 	billingv1 "github.com/lihongjie0209/platform-protos/gen/go/platform/billing/v1"
 	"google.golang.org/protobuf/proto"
 )
@@ -41,6 +42,7 @@ type Service struct {
 	gateway      PaymentGateway
 	applications appaccess.Verifier
 	operations   operationlog.Recorder
+	security     securitylog.Recorder
 	logger       *slog.Logger
 	now          func() time.Time
 }
@@ -56,13 +58,14 @@ func NewService(repository Repository, transactor *database.Transactor, usage Us
 	return &Service{repository: repository, transactor: transactor, usage: usage, applications: applications, now: time.Now}, nil
 }
 
-func NewRuntimeService(repository Repository, transactor *database.Transactor, usage UsageReader, gateway PaymentGateway, applications appaccess.Verifier, operations operationlog.Recorder, logger *slog.Logger) (*Service, error) {
+func NewRuntimeService(repository Repository, transactor *database.Transactor, usage UsageReader, gateway PaymentGateway, applications appaccess.Verifier, operations operationlog.Recorder, security securitylog.Recorder, logger *slog.Logger) (*Service, error) {
 	service, err := NewService(repository, transactor, usage, applications)
 	if err != nil {
 		return nil, err
 	}
 	service.gateway = gateway
 	service.operations = operations
+	service.security = security
 	service.logger = logger
 	return service, nil
 }
@@ -247,7 +250,11 @@ func (s *Service) DeleteUsagePrice(ctx context.Context, id string, version int64
 	return resultErr
 }
 
-func (s *Service) CreateSubscription(ctx context.Context, tenantID, applicationID, planID string, planVersion int64, startsAt time.Time, externalReference string) (Subscription, error) {
+func (s *Service) CreateSubscription(ctx context.Context, tenantID, applicationID, planID string, planVersion int64, startsAt time.Time, externalReference string) (result Subscription, resultErr error) {
+	started := time.Now()
+	defer func() {
+		resultErr = s.recordFinancialMutation(ctx, "billing.subscription.create", "billing_subscription", result.ID, tenantID, applicationID, map[string]any{"plan_id": planID, "plan_version": planVersion}, started, resultErr)
+	}()
 	actorID, err := actor(ctx)
 	if err != nil {
 		return Subscription{}, err
@@ -285,9 +292,14 @@ func (s *Service) CreateSubscription(ctx context.Context, tenantID, applicationI
 		}
 		return s.addEvent(ctx, tx, "platform.billing.subscription.changed.v1", "platform.billing.v1.SubscriptionChanged", value.ID, "subscription", value.TenantID, value.ApplicationID, actorID, now, &billingv1.SubscriptionChangedEvent{Subscription: ToProtoSubscription(value), ChangeType: "created"})
 	})
-	return value, translate(err)
+	result, resultErr = value, translate(err)
+	return result, resultErr
 }
-func (s *Service) ChangeSubscription(ctx context.Context, tenantID, applicationID, id, planID, effectiveMode string, version, planVersion int64) (Subscription, error) {
+func (s *Service) ChangeSubscription(ctx context.Context, tenantID, applicationID, id, planID, effectiveMode string, version, planVersion int64) (result Subscription, resultErr error) {
+	started := time.Now()
+	defer func() {
+		resultErr = s.recordFinancialMutation(ctx, "billing.subscription.change", "billing_subscription", id, tenantID, applicationID, map[string]any{"plan_id": planID, "effective_mode": effectiveMode, "expected_version": version, "plan_version": planVersion}, started, resultErr)
+	}()
 	actorID, err := actor(ctx)
 	if err != nil {
 		return Subscription{}, err
@@ -332,9 +344,14 @@ func (s *Service) ChangeSubscription(ctx context.Context, tenantID, applicationI
 		}
 		return s.addEvent(ctx, tx, "platform.billing.subscription.changed.v1", "platform.billing.v1.SubscriptionChanged", value.ID, "subscription", value.TenantID, value.ApplicationID, actorID, value.UpdatedAt, &billingv1.SubscriptionChangedEvent{Subscription: ToProtoSubscription(value), ChangeType: changeType})
 	})
-	return value, translate(err)
+	result, resultErr = value, translate(err)
+	return result, resultErr
 }
-func (s *Service) CancelSubscription(ctx context.Context, tenantID, applicationID, id string, atPeriodEnd bool, version int64) (Subscription, error) {
+func (s *Service) CancelSubscription(ctx context.Context, tenantID, applicationID, id string, atPeriodEnd bool, version int64) (result Subscription, resultErr error) {
+	started := time.Now()
+	defer func() {
+		resultErr = s.recordFinancialMutation(ctx, "billing.subscription.cancel", "billing_subscription", id, tenantID, applicationID, map[string]any{"at_period_end": atPeriodEnd, "expected_version": version}, started, resultErr)
+	}()
 	actorID, err := actor(ctx)
 	if err != nil {
 		return Subscription{}, err
@@ -378,7 +395,8 @@ func (s *Service) CancelSubscription(ctx context.Context, tenantID, applicationI
 		}
 		return s.addEvent(ctx, tx, "platform.billing.subscription.changed.v1", "platform.billing.v1.SubscriptionChanged", value.ID, "subscription", value.TenantID, value.ApplicationID, actorID, now, &billingv1.SubscriptionChangedEvent{Subscription: ToProtoSubscription(value), ChangeType: changeType})
 	})
-	return value, translate(err)
+	result, resultErr = value, translate(err)
+	return result, resultErr
 }
 
 func (s *Service) ApplyDueSubscriptionTransitions(ctx context.Context, limit int) (int, error) {
@@ -522,7 +540,11 @@ func (s *Service) PreviewInvoice(ctx context.Context, tenantID, applicationID, s
 	invoice.TotalMinor = subtotal
 	return InvoicePreview{Invoice: invoice, Lines: lines}, nil
 }
-func (s *Service) GenerateInvoice(ctx context.Context, tenantID, applicationID, subscriptionID string, start, end time.Time, key string) (InvoicePreview, bool, error) {
+func (s *Service) GenerateInvoice(ctx context.Context, tenantID, applicationID, subscriptionID string, start, end time.Time, key string) (result InvoicePreview, duplicate bool, resultErr error) {
+	started := time.Now()
+	defer func() {
+		resultErr = s.recordFinancialMutation(ctx, "billing.invoice.generate", "billing_invoice", result.Invoice.ID, tenantID, applicationID, map[string]any{"subscription_id": subscriptionID, "duplicate": duplicate}, started, resultErr)
+	}()
 	actorID, err := actor(ctx)
 	if err != nil {
 		return InvoicePreview{}, false, err
@@ -565,11 +587,17 @@ func (s *Service) GenerateInvoice(ctx context.Context, tenantID, applicationID, 
 	}
 	if !created {
 		invoice, lines, err := s.repository.GetInvoice(ctx, tenantID, applicationID, duplicateID)
-		return InvoicePreview{Invoice: invoice, Lines: lines}, true, translate(err)
+		result, duplicate, resultErr = InvoicePreview{Invoice: invoice, Lines: lines}, true, translate(err)
+		return result, duplicate, resultErr
 	}
-	return preview, false, nil
+	result = preview
+	return result, false, nil
 }
-func (s *Service) FinalizeInvoice(ctx context.Context, tenantID, applicationID, id string, dueAt time.Time, version int64) (Invoice, error) {
+func (s *Service) FinalizeInvoice(ctx context.Context, tenantID, applicationID, id string, dueAt time.Time, version int64) (result Invoice, resultErr error) {
+	started := time.Now()
+	defer func() {
+		resultErr = s.recordFinancialMutation(ctx, "billing.invoice.finalize", "billing_invoice", id, tenantID, applicationID, map[string]any{"expected_version": version}, started, resultErr)
+	}()
 	actorID, err := actor(ctx)
 	if err != nil {
 		return Invoice{}, err
@@ -598,9 +626,14 @@ func (s *Service) FinalizeInvoice(ctx context.Context, tenantID, applicationID, 
 	value.UpdatedAt = now
 	value.UpdatedBy = actorID
 	err = s.transactor.Within(ctx, nil, func(tx *sqlx.Tx) error { return s.repository.UpdateInvoice(ctx, tx, value, version) })
-	return value, translate(err)
+	result, resultErr = value, translate(err)
+	return result, resultErr
 }
-func (s *Service) VoidInvoice(ctx context.Context, tenantID, applicationID, id, reason string, version int64) (Invoice, error) {
+func (s *Service) VoidInvoice(ctx context.Context, tenantID, applicationID, id, reason string, version int64) (result Invoice, resultErr error) {
+	started := time.Now()
+	defer func() {
+		resultErr = s.recordFinancialMutation(ctx, "billing.invoice.void", "billing_invoice", id, tenantID, applicationID, map[string]any{"reason": reason, "expected_version": version}, started, resultErr)
+	}()
 	actorID, err := actor(ctx)
 	if err != nil {
 		return Invoice{}, err
@@ -626,7 +659,8 @@ func (s *Service) VoidInvoice(ctx context.Context, tenantID, applicationID, id, 
 	value.UpdatedAt = s.now()
 	value.UpdatedBy = actorID
 	err = s.transactor.Within(ctx, nil, func(tx *sqlx.Tx) error { return s.repository.UpdateInvoice(ctx, tx, value, version) })
-	return value, translate(err)
+	result, resultErr = value, translate(err)
+	return result, resultErr
 }
 func (s *Service) GetInvoice(ctx context.Context, tenantID, applicationID, id string) (Invoice, []InvoiceLine, error) {
 	if err := authorizeTenant(ctx, tenantID); err != nil {
@@ -668,7 +702,12 @@ func (s *Service) ListPayableInvoices(ctx context.Context, tenantID, application
 	return Page[Invoice]{Items: items, Total: total, Page: page, PageSize: size}, translate(err)
 }
 
-func (s *Service) CreatePaymentAttempt(ctx context.Context, tenantID, applicationID, invoiceID string, invoiceVersion int64, provider, paymentMethodReference, key string) (PaymentAttempt, bool, error) {
+func (s *Service) CreatePaymentAttempt(ctx context.Context, tenantID, applicationID, invoiceID string, invoiceVersion int64, provider, paymentMethodReference, key string) (paymentResult PaymentAttempt, duplicate bool, resultErr error) {
+	started := time.Now()
+	defer func() {
+		resourceID := paymentResult.ID
+		resultErr = s.recordFinancialMutation(ctx, "billing.payment.create", "billing_payment_attempt", resourceID, tenantID, applicationID, map[string]any{"invoice_id": invoiceID, "invoice_version": invoiceVersion, "provider": provider, "duplicate": duplicate}, started, resultErr)
+	}()
 	actorID, err := actor(ctx)
 	if err != nil {
 		return PaymentAttempt{}, false, err
@@ -696,11 +735,11 @@ func (s *Service) CreatePaymentAttempt(ctx context.Context, tenantID, applicatio
 		if s.gateway == nil {
 			return existing, true, apperror.Unavailable("payment gateway is unavailable", nil)
 		}
-		result, gatewayErr := s.gateway.Create(ctx, PaymentCommand{AttemptID: existing.ID, TenantID: existing.TenantID, ApplicationID: existing.ApplicationID, InvoiceID: existing.InvoiceID, Provider: existing.Provider, PaymentMethodReference: paymentMethodReference, Currency: existing.Currency, AmountMinor: existing.AmountMinor})
+		gatewayResult, gatewayErr := s.gateway.Create(ctx, PaymentCommand{AttemptID: existing.ID, TenantID: existing.TenantID, ApplicationID: existing.ApplicationID, InvoiceID: existing.InvoiceID, Provider: existing.Provider, PaymentMethodReference: paymentMethodReference, Currency: existing.Currency, AmountMinor: existing.AmountMinor})
 		if gatewayErr != nil {
 			return existing, true, apperror.Unavailable("create provider payment", gatewayErr)
 		}
-		updated, _, _, applyErr := s.ApplyPaymentResult(ctx, existing.ID, result.ProviderPaymentID, result.ProviderEventID, result.Status, result.FailureCode, result.FailureMessage, result.ProcessedAt)
+		updated, _, _, applyErr := s.ApplyPaymentResult(ctx, existing.ID, gatewayResult.ProviderPaymentID, gatewayResult.ProviderEventID, gatewayResult.Status, gatewayResult.FailureCode, gatewayResult.FailureMessage, gatewayResult.ProcessedAt)
 		return updated, true, applyErr
 	} else if !errors.Is(findErr, ErrNotFound) {
 		return PaymentAttempt{}, false, translate(findErr)
@@ -743,12 +782,13 @@ func (s *Service) CreatePaymentAttempt(ctx context.Context, tenantID, applicatio
 	if s.gateway == nil {
 		return value, !created, apperror.Unavailable("payment gateway is unavailable", nil)
 	}
-	result, gatewayErr := s.gateway.Create(ctx, PaymentCommand{AttemptID: value.ID, TenantID: value.TenantID, ApplicationID: value.ApplicationID, InvoiceID: value.InvoiceID, Provider: value.Provider, PaymentMethodReference: paymentMethodReference, Currency: value.Currency, AmountMinor: value.AmountMinor})
+	gatewayResult, gatewayErr := s.gateway.Create(ctx, PaymentCommand{AttemptID: value.ID, TenantID: value.TenantID, ApplicationID: value.ApplicationID, InvoiceID: value.InvoiceID, Provider: value.Provider, PaymentMethodReference: paymentMethodReference, Currency: value.Currency, AmountMinor: value.AmountMinor})
 	if gatewayErr != nil {
 		return value, !created, apperror.Unavailable("create provider payment", gatewayErr)
 	}
-	updated, _, _, applyErr := s.ApplyPaymentResult(ctx, value.ID, result.ProviderPaymentID, result.ProviderEventID, result.Status, result.FailureCode, result.FailureMessage, result.ProcessedAt)
-	return updated, !created, applyErr
+	updated, _, _, applyErr := s.ApplyPaymentResult(ctx, value.ID, gatewayResult.ProviderPaymentID, gatewayResult.ProviderEventID, gatewayResult.Status, gatewayResult.FailureCode, gatewayResult.FailureMessage, gatewayResult.ProcessedAt)
+	paymentResult, duplicate, resultErr = updated, !created, applyErr
+	return paymentResult, duplicate, resultErr
 }
 
 func (s *Service) ListPayments(ctx context.Context, tenantID, applicationID, status string, page, size int) (Page[PaymentAttempt], error) {
@@ -777,7 +817,11 @@ func (s *Service) GetPayment(ctx context.Context, tenantID, applicationID, id st
 	return value, translate(err)
 }
 
-func (s *Service) ApplyPaymentResult(ctx context.Context, paymentID, providerPaymentID, providerEventID, status, failureCode, failureMessage string, processedAt time.Time) (PaymentAttempt, Invoice, bool, error) {
+func (s *Service) ApplyPaymentResult(ctx context.Context, paymentID, providerPaymentID, providerEventID, status, failureCode, failureMessage string, processedAt time.Time) (paymentResult PaymentAttempt, invoiceResult Invoice, duplicate bool, resultErr error) {
+	started := time.Now()
+	defer func() {
+		resultErr = s.recordFinancialMutation(ctx, "billing.payment.apply_result", "billing_payment_attempt", paymentID, paymentResult.TenantID, paymentResult.ApplicationID, map[string]any{"status": status, "duplicate": duplicate}, started, resultErr)
+	}()
 	actorID, err := actor(ctx)
 	if err != nil {
 		return PaymentAttempt{}, Invoice{}, false, err
@@ -808,7 +852,7 @@ func (s *Service) ApplyPaymentResult(ctx context.Context, paymentID, providerPay
 		processedAt = s.now()
 	}
 	now := s.now()
-	duplicate := false
+	duplicate = false
 	err = s.transactor.Within(ctx, nil, func(tx *sqlx.Tx) error {
 		claimed, claimErr := s.repository.ClaimProviderEvent(ctx, tx, value.Provider, providerEventID, value.ID, newAudit(actorID, now))
 		if claimErr != nil {
@@ -841,7 +885,8 @@ func (s *Service) ApplyPaymentResult(ctx context.Context, paymentID, providerPay
 		}
 		return s.addEvent(ctx, tx, "platform.billing.payment.changed.v1", "platform.billing.v1.PaymentChanged", value.ID, "payment_attempt", value.TenantID, value.ApplicationID, actorID, now, &billingv1.PaymentChangedEvent{PaymentAttempt: ToProtoPayment(value), Invoice: ToProtoInvoice(invoice), ChangeType: status})
 	})
-	return value, invoice, duplicate, translate(err)
+	paymentResult, invoiceResult, resultErr = value, invoice, translate(err)
+	return paymentResult, invoiceResult, duplicate, resultErr
 }
 
 func validPaymentTransition(from, to string) bool {
@@ -856,7 +901,11 @@ func validPaymentTransition(from, to string) bool {
 	}
 }
 
-func (s *Service) RecordRefund(ctx context.Context, tenantID, applicationID, paymentID string, paymentVersion int64, providerRefundID, key string, amount int64, reason, status string) (Refund, Invoice, bool, error) {
+func (s *Service) RecordRefund(ctx context.Context, tenantID, applicationID, paymentID string, paymentVersion int64, providerRefundID, key string, amount int64, reason, status string) (refundResult Refund, invoiceResult Invoice, duplicate bool, resultErr error) {
+	started := time.Now()
+	defer func() {
+		resultErr = s.recordFinancialMutation(ctx, "billing.refund.record", "billing_refund", refundResult.ID, tenantID, applicationID, map[string]any{"payment_id": paymentID, "payment_version": paymentVersion, "amount_minor": amount, "status": status, "duplicate": duplicate}, started, resultErr)
+	}()
 	actorID, err := actor(ctx)
 	if err != nil {
 		return Refund{}, Invoice{}, false, err
@@ -919,9 +968,11 @@ func (s *Service) RecordRefund(ctx context.Context, tenantID, applicationID, pay
 	}
 	if !created {
 		existing, getErr := s.repository.GetRefund(ctx, existingID)
-		return existing, invoice, true, translate(getErr)
+		refundResult, invoiceResult, duplicate, resultErr = existing, invoice, true, translate(getErr)
+		return refundResult, invoiceResult, duplicate, resultErr
 	}
-	return value, invoice, false, nil
+	refundResult, invoiceResult = value, invoice
+	return refundResult, invoiceResult, false, nil
 }
 
 func (s *Service) ListRefunds(ctx context.Context, tenantID, applicationID, status string, page, size int) (Page[Refund], error) {
@@ -1023,6 +1074,27 @@ func (s *Service) recordOperation(ctx context.Context, operation, resourceType, 
 		}
 	}
 	return resultErr
+}
+
+func (s *Service) recordFinancialMutation(ctx context.Context, operation, resourceType, resourceID, tenantID, applicationID string, request any, started time.Time, resultErr error) error {
+	operationErr := s.recordOperation(ctx, operation, resourceType, resourceID, applicationID, request, started, resultErr)
+	if s.security == nil || !s.security.Enabled() {
+		return operationErr
+	}
+	requestID, _ := requestid.FromContext(ctx)
+	entry := securitylog.Entry{EventType: securitylog.EventType(operation), SubjectType: resourceType, SubjectID: resourceID, TenantID: tenantID, ApplicationID: applicationID, RequestID: requestID, Succeeded: resultErr == nil, Metadata: request}
+	if resultErr != nil {
+		entry.ErrorMessage = resultErr.Error()
+	}
+	if err := s.security.Record(ctx, entry); err != nil {
+		if resultErr == nil && s.security.FailClosed() {
+			return apperror.Unavailable("security log unavailable", err)
+		}
+		if s.logger != nil {
+			s.logger.ErrorContext(ctx, "record billing security event", "event_type", operation, "error", err)
+		}
+	}
+	return operationErr
 }
 func newAudit(actorID string, now time.Time) Audit {
 	return Audit{Version: 1, CreatedAt: now, UpdatedAt: now, CreatedBy: actorID, UpdatedBy: actorID}

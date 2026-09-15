@@ -14,6 +14,7 @@ import (
 	"github.com/lihongjie0209/microservice-platform-go/appaccess"
 	"github.com/lihongjie0209/microservice-platform-go/operationlog"
 	platformprincipal "github.com/lihongjie0209/microservice-platform-go/principal"
+	"github.com/lihongjie0209/microservice-platform-go/securitylog"
 	commonv1 "github.com/lihongjie0209/platform-protos/gen/go/platform/common/v1"
 	"google.golang.org/protobuf/proto"
 )
@@ -33,6 +34,21 @@ type operationRecorderStub struct {
 
 func (*operationRecorderStub) Enabled() bool { return true }
 func (r *operationRecorderStub) Record(_ context.Context, entry operationlog.Entry) error {
+	r.entry = entry
+	return r.err
+}
+
+type securityRecorderStub struct {
+	entry      securitylog.Entry
+	err        error
+	failClosed bool
+}
+
+func (*securityRecorderStub) Enabled() bool { return true }
+func (r *securityRecorderStub) FailClosed() bool {
+	return r.failClosed
+}
+func (r *securityRecorderStub) Record(_ context.Context, entry securitylog.Entry) error {
 	r.entry = entry
 	return r.err
 }
@@ -245,10 +261,14 @@ func TestCreateSubscriptionPublishesApplicationScopedEvent(t *testing.T) {
 	repository := &subscriptionRepository{}
 	service := newTestService(t, repository, nil)
 	service.transactor = transactionStub{}
+	operations := &operationRecorderStub{}
+	security := &securityRecorderStub{}
+	service.operations = operations
+	service.security = security
 	service.now = func() time.Time {
 		return time.Date(2026, time.September, 1, 8, 0, 0, 0, time.FixedZone("UTC+8", 8*60*60))
 	}
-	ctx := platformprincipal.WithContext(t.Context(), platformprincipal.Principal{ID: "user-1", Type: platformprincipal.TypeUser, TenantID: "tenant-1"})
+	ctx := requestid.WithContext(platformprincipal.WithContext(t.Context(), platformprincipal.Principal{ID: "user-1", Type: platformprincipal.TypeUser, TenantID: "tenant-1"}), "request-subscription-1")
 	subscription, err := service.CreateSubscription(ctx, "tenant-1", "app-1", "plan-1", 1, time.Time{}, "")
 	if err != nil {
 		t.Fatal(err)
@@ -259,6 +279,25 @@ func TestCreateSubscriptionPublishesApplicationScopedEvent(t *testing.T) {
 	}
 	if subscription.ApplicationID != "app-1" || envelope.GetTenantId() != "tenant-1" || envelope.GetApplicationId() != "app-1" {
 		t.Fatalf("subscription=%+v envelope scope=%s/%s", subscription, envelope.GetTenantId(), envelope.GetApplicationId())
+	}
+	if operations.entry.Operation != "billing.subscription.create" || operations.entry.ResourceID != subscription.ID || operations.entry.RequestID != "request-subscription-1" || !operations.entry.Succeeded {
+		t.Fatalf("operation entry = %+v", operations.entry)
+	}
+	if security.entry.EventType != "billing.subscription.create" || security.entry.SubjectID != subscription.ID || security.entry.TenantID != "tenant-1" || security.entry.ApplicationID != "app-1" || security.entry.RequestID != "request-subscription-1" || !security.entry.Succeeded {
+		t.Fatalf("security entry = %+v", security.entry)
+	}
+}
+
+func TestCreateSubscriptionFailsClosedWhenSecurityLogUnavailable(t *testing.T) {
+	repository := &subscriptionRepository{}
+	service := newTestService(t, repository, nil)
+	service.transactor = transactionStub{}
+	service.security = &securityRecorderStub{err: errors.New("security publisher unavailable"), failClosed: true}
+	ctx := platformprincipal.WithContext(t.Context(), platformprincipal.Principal{ID: "user-1", Type: platformprincipal.TypeUser, TenantID: "tenant-1"})
+	_, err := service.CreateSubscription(ctx, "tenant-1", "app-1", "plan-1", 1, time.Time{}, "")
+	var appErr *apperror.Error
+	if !errors.As(err, &appErr) || appErr.Code != apperror.CodeDependencyUnavailable {
+		t.Fatalf("CreateSubscription() error = %v, want dependency unavailable", err)
 	}
 }
 
@@ -344,6 +383,10 @@ func TestChangeSubscriptionRequiresTargetPlanVersion(t *testing.T) {
 	t.Parallel()
 	repository := &subscriptionChangeRepository{}
 	service := newTestService(t, repository, nil)
+	operations := &operationRecorderStub{}
+	security := &securityRecorderStub{}
+	service.operations = operations
+	service.security = security
 	ctx := platformprincipal.WithContext(t.Context(), platformprincipal.Principal{
 		ID: "user-1", Type: platformprincipal.TypeUser, TenantID: "tenant-1",
 	})
@@ -351,6 +394,9 @@ func TestChangeSubscriptionRequiresTargetPlanVersion(t *testing.T) {
 	_, err := service.ChangeSubscription(ctx, "tenant-1", "app-1", "subscription-1", "plan-new", "immediate", 4, 0)
 	if err == nil || repository.lockedPlanID != "" {
 		t.Fatalf("error=%v locked plan=%q", err, repository.lockedPlanID)
+	}
+	if operations.entry.Succeeded || operations.entry.ErrorMessage == "" || security.entry.Succeeded || security.entry.ErrorMessage == "" {
+		t.Fatalf("operation=%+v security=%+v", operations.entry, security.entry)
 	}
 }
 
